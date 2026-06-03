@@ -3,11 +3,11 @@ package dto
 import "time"
 
 type ErrorDTO struct {
-	Message error     `json:"message"`
+	Message string    `json:"message"`
 	Time    time.Time `json:"time"`
 }
 
-func NewErrorDTO(message error, time time.Time) ErrorDTO {
+func NewErrorDTO(message string, time time.Time) ErrorDTO {
 	return ErrorDTO{
 		Message: message,
 		Time:    time,

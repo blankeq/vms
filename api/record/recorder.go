@@ -54,8 +54,8 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	if fps <= 0 {
 		fps = 25
 	}
-	width := video.Get(gocv.VideoCaptureFrameWidth)
-	height := video.Get(gocv.VideoCaptureFrameHeight)
+	width := int(video.Get(gocv.VideoCaptureFrameWidth))
+	height := int(video.Get(gocv.VideoCaptureFrameHeight))
 
 	dir := fmt.Sprintf("./recordings/%d", cameraId)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
@@ -74,7 +74,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 			fileTime := now.Format("15-04-05.mp4")
 			filePath := dirPath + "/" + fileTime
 
-			writer, err := gocv.VideoWriterFile(filePath, "mp4v", fps, int(width), int(height), true)
+			writer, err := gocv.VideoWriterFile(filePath, "mp4v", fps, width, height, true)
 			if err != nil {
 				fmt.Println("Failed to write image to file: ", err)
 				time.Sleep(5 * time.Second)

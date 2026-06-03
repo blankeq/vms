@@ -3,119 +3,112 @@ package record
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
-	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
+	"vms/api/stream"
+
+	"github.com/hybridgroup/mjpeg"
+	"gocv.io/x/gocv"
 )
 
-type Recorder struct {
+type RecordManager struct {
 	mtx           sync.Mutex
 	activeCameras map[int]context.CancelFunc
 }
 
-func NewRecorder() *Recorder {
-	return &Recorder{
-		mtx:           sync.Mutex{},
+func NewRecordManager() *RecordManager {
+	return &RecordManager{
 		activeCameras: make(map[int]context.CancelFunc),
 	}
 }
 
-func (r *Recorder) StartRecording(cameraId int, rtspLink string) error {
-	// r.mtx.Lock()
-	// defer r.mtx.Unlock()
+var Manager = NewRecordManager()
 
-	// if _, ok := r.activeCameras[cameraId]; ok {
-	// 	return ErrAlreadyRecording
-	// }
+func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
-	// ctx, cancel := context.WithCancel(context.Background())
-	// r.activeCameras[cameraId] = cancel
-
-	// go func(ctx context.Context) {
-	// 	dir := fmt.Sprintf("./recordings/%d", cameraId)
-	// 	fileFormat := dir + "/%d-%m-%Y/%H-%M-%S.mp4"
-	// 	os.MkdirAll(dir, os.ModePerm)
-
-	// 	cmd := exec.CommandContext(
-	// 		ctx, "ffmpeg", "-rtcp_transport", "tcp", "-i", rtspLink, "-f", "segment",
-	// 		"-segment_time", "60", "-strftime", "1", "-reset_timestamps", "1", "-c", "copy",
-	// 		fileFormat,
-	// 	)
-
-	// 	fmt.Println("Camera", cameraId, "started recording")
-
-	// 	if err := cmd.Run(); err != nil {
-	// 		fmt.Println("Camera", cameraId, "is stopped or an error occured:", err)
-	// 	}
-	// }(ctx)
+	if _, ok := r.activeCameras[cameraId]; ok {
+		return ErrAlreadyRecording
+	}
 
 	video, err := gocv.OpenVideoCapture(rtspLink)
 	if err != nil {
-		fmt.Println("Не удалось открыть RTSP для камеры %d: %v", cameraId, err)
-		return err
+		return ErrTryingToOpenVideoCapture
 	}
 	defer video.Close()
 
+	cameraStream := mjpeg.NewStream()
+	stream.Manager.StartStream(cameraId, cameraStream)
+	defer stream.Manager.StopStream(cameraId)
+
 	img := gocv.NewMat()
 	defer img.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r.activeCameras[cameraId] = cancel
+	// defer r.StopRecording(cameraId) - decide how to delete camera from active pool on error
 
 	fps := video.Get(gocv.VideoCaptureFPS)
 	if fps <= 0 {
 		fps = 25
 	}
-	width := int(video.Get(gocv.VideoCaptureFrameWidth))
-	height := int(video.Get(gocv.VideoCaptureFrameHeight))
+	width := video.Get(gocv.VideoCaptureFrameWidth)
+	height := video.Get(gocv.VideoCaptureFrameHeight)
 
-	baseDir := filepath.Join(".", "recordings", strconv.Itoa(cameraId))
+	dir := fmt.Sprintf("./recordings/%d", cameraId)
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return err
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		default:
 			now := time.Now()
-			dateDir := filepath.Join(baseDir, now.Format("2006-01-02"))
-			os.MkdirAll(dateDir, 0755)
+			dirTime := now.Format("02-01-2006")
+			dirPath := dir + "/" + dirTime
+			os.MkdirAll(dirPath, os.ModePerm)
+			fileTime := now.Format("15-04-05.mp4")
+			filePath := dirPath + "/" + fileTime
 
-			fileName := filepath.Join(dateDir, now.Format("15-04-05.mp4"))
-
-			// Открываем девайс записи видео (кодек mp4v или avc1 в зависимости от сборки OpenCV)
-			writer, err := gocv.VideoWriterFile(fileName, "mp4v", fps, width, height, true)
+			writer, err := gocv.VideoWriterFile(filePath, "mp4v", fps, int(width), int(height), true)
 			if err != nil {
-				log.Printf("Ошибка создания файла записи %s: %v", fileName, err)
+				fmt.Println("Failed to write image to file: ", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			segmentEnd := time.Now().Add(60 * time.Second) // Нарезка по 60 секунд ровно
+			segmentEnd := time.Now().Add(60 * time.Second)
 
 			for time.Now().Before(segmentEnd) {
 				select {
 				case <-ctx.Done():
 					writer.Close()
-					return
+					return nil
 				default:
 					if ok := video.Read(&img); !ok || img.Empty() {
-						log.Printf("Потерян поток с камеры %d, переподключение...", cameraId)
-						time.Sleep(2 * time.Second)
+						time.Sleep(10 * time.Millisecond)
 						break
 					}
 
-					// Записываем кадр в файл архива
 					writer.Write(img)
+
+					buf, err := gocv.IMEncode(".jpg", img)
+					if err == nil {
+						cameraStream.UpdateJPEG(buf.GetBytes())
+					}
 				}
 			}
-			writer.Close() // Закрываем сегмент, переходим к следующей минуте
+
+			writer.Close()
 		}
 	}
-
-	return nil
 }
 
-func (r *Recorder) StopRecording(cameraId int) error {
+func (r *RecordManager) StopRecording(cameraId int) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 

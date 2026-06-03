@@ -17,5 +17,8 @@ func Init() error {
 		panic(err)
 	}
 
+	DB.SetMaxOpenConns(25)
+	DB.SetMaxIdleConns(5)
+
 	return DB.Ping()
 }

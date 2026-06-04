@@ -12,7 +12,7 @@ func GetArchiveFiles(cameraId string, date string) ([]dto.ArchiveFileDTO, error)
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []dto.ArchiveFileDTO{}, nil
+			return []dto.ArchiveFileDTO{}, ErrFilesNotExist
 		}
 	}
 
@@ -26,11 +26,7 @@ func GetArchiveFiles(cameraId string, date string) ([]dto.ArchiveFileDTO, error)
 			path := "/" + cameraId + "/" + "date" + filename
 			time := strings.TrimSuffix(filename, ".mp4")
 
-			af = dto.ArchiveFileDTO{
-				Path: path,
-				Time: time,
-			}
-
+			af = dto.NewArchiveFileDTO(path, time)
 			archiveFiles = append(archiveFiles, af)
 		}
 	}

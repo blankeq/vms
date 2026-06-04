@@ -1,6 +1,9 @@
 package dto
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type ErrorDTO struct {
 	Message string    `json:"message"`
@@ -14,8 +17,16 @@ func NewErrorDTO(message string, time time.Time) ErrorDTO {
 	}
 }
 
+func (e ErrorDTO) ToString() string {
+	b, err := json.MarshalIndent(&e, "", "    ")
+	if err != nil {
+		panic(err)
+	}
+
+	return string(b)
+}
+
 type CameraDTO struct {
-	Id       *int   `json:"id"`
 	Name     string `json:"name"`
 	RTSPLink string `json:"rtsplink"`
 }
@@ -37,8 +48,8 @@ type ArchiveFileDTO struct {
 	Time string `json:"time"`
 }
 
-func NewArchiveFileDTO(path string, time string) *ArchiveFileDTO {
-	return &ArchiveFileDTO{
+func NewArchiveFileDTO(path string, time string) ArchiveFileDTO {
+	return ArchiveFileDTO{
 		Path: path,
 		Time: time,
 	}

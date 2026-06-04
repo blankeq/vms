@@ -2,38 +2,61 @@ package cameras
 
 import (
 	"vms/api/database"
-	"vms/api/dto"
 )
 
-func GetCameras() ([]dto.CameraDTO, error) {
-	cameras := make([]dto.CameraDTO, 0)
+type Camera struct {
+	Id       *int
+	Name     string
+	RTSPLink string
+}
+
+func NewCamera(name string, rtsplink string) *Camera {
+	return &Camera{
+		Name:     name,
+		RTSPLink: rtsplink,
+	}
+}
+
+func GetCameras() ([]Camera, error) {
+	cameras := make([]Camera, 0)
 
 	rows, err := database.DB.Query("SELECT id, name, rtsplink FROM cameras")
 	if err != nil {
-		panic(err)
+		return []Camera{}, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var c dto.CameraDTO
+		var c Camera
 
 		if err := rows.Scan(&c.Id, &c.Name, &c.RTSPLink); err == nil {
 			cameras = append(cameras, c)
 		} else {
-			return []dto.CameraDTO{}, err
+			return []Camera{}, err
 		}
 	}
 
 	return cameras, nil
 }
 
-func CreateCamera(cameraDTO *dto.CameraDTO) (dto.CameraDTO, error) {
-	err := database.DB.QueryRow("INSERT INTO cameras (name, rtsplink) VALUES ($1, $2) returning id", cameraDTO.Name, cameraDTO.RTSPLink).Scan(&cameraDTO.Id)
+func GetCamera(cameraId int) (Camera, error) {
+	var c Camera
+
+	err := database.DB.QueryRow("SELECT id, name, rtsplink FROM cameras WHERE id = $1", cameraId).Scan(&c.Id, &c.Name, &c.RTSPLink)
 	if err != nil {
-		return dto.CameraDTO{}, err
+		return Camera{}, err
 	}
 
-	return *cameraDTO, nil
+	return c, nil
+}
+
+func CreateCamera(camera *Camera) (*Camera, error) {
+	err := database.DB.QueryRow("INSERT INTO cameras (name, rtsplink) VALUES ($1, $2) returning id", camera.Name, camera.RTSPLink).Scan(&camera.Id)
+	if err != nil {
+		return &Camera{}, err
+	}
+
+	return camera, nil
 }
 
 func DeleteCamera(cameraId int) error {

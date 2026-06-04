@@ -27,11 +27,12 @@ var Manager = NewRecordManager()
 
 func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
 
 	if _, ok := r.activeCameras[cameraId]; ok {
 		return ErrAlreadyRecording
 	}
+
+	r.mtx.Unlock()
 
 	video, err := gocv.OpenVideoCapture(rtspLink)
 	if err != nil {
@@ -58,7 +59,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	height := int(video.Get(gocv.VideoCaptureFrameHeight))
 
 	dir := fmt.Sprintf("./recordings/%d", cameraId)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
@@ -70,8 +71,8 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 			now := time.Now()
 			dirTime := now.Format("02-01-2006")
 			dirPath := dir + "/" + dirTime
-			os.MkdirAll(dirPath, os.ModePerm)
-			fileTime := now.Format("15-04-05.mp4")
+			os.MkdirAll(dirPath, 0755)
+			fileTime := now.Format("15-04-05") + ".mp4"
 			filePath := dirPath + "/" + fileTime
 
 			writer, err := gocv.VideoWriterFile(filePath, "mp4v", fps, width, height, true)
@@ -81,7 +82,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 				continue
 			}
 
-			segmentEnd := time.Now().Add(60 * time.Second)
+			segmentEnd := time.Now().Add(5 * time.Second)
 
 			for time.Now().Before(segmentEnd) {
 				select {
@@ -89,9 +90,13 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 					writer.Close()
 					return nil
 				default:
-					if ok := video.Read(&img); !ok || img.Empty() {
+					if ok := video.Read(&img); !ok {
 						time.Sleep(10 * time.Millisecond)
 						break
+					}
+
+					if img.Empty() {
+						continue
 					}
 
 					writer.Write(img)
@@ -108,9 +113,8 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	}
 }
 
-func (r *RecordManager) StopRecording(cameraId int) error {
+func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay for writer to finish the file
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
 
 	cancel, ok := r.activeCameras[cameraId]
 	if !ok {
@@ -119,6 +123,9 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 
 	cancel()
 	delete(r.activeCameras, cameraId)
+
+	r.mtx.Unlock()
+
 	fmt.Println("Camera", cameraId, "stopped recording")
 
 	return nil

@@ -11,4 +11,4 @@ require gocv.io/x/gocv v0.43.0
 
 require github.com/gorilla/mux v1.8.1
 
-require golang.org/x/sync v0.20.0 // indirect
+require golang.org/x/sync v0.20.0

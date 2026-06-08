@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"os"
 
 	_ "github.com/lib/pq"
 )
@@ -9,10 +10,12 @@ import (
 var DB *sql.DB
 
 func Init() error {
-	connStr := "postgres://postgres:123@localhost/vms?sslmode=disable"
+	dbDriver := os.Getenv("DB_DRIVER")
+	dbUrl := os.Getenv("DB_URL")
+
 	var err error
 
-	DB, err = sql.Open("postgres", connStr)
+	DB, err = sql.Open(dbDriver, dbUrl)
 	if err != nil {
 		panic(err)
 	}

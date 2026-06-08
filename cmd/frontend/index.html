@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Панель управления VMS</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 20px; background: #eceff1; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .hidden { display: none !important; }
+        .tabs { margin-bottom: 25px; border-bottom: 2px solid #cfd8dc; padding-bottom: 10px; }
+        .tab-btn { padding: 12px 24px; cursor: pointer; border: none; background: #b0bec5; margin-right: 8px; font-weight: bold; border-radius: 4px; color: white; }
+        .tab-btn.active { background: #1e88e5; color: white; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #b0bec5; border-radius: 4px; }
+        button { padding: 10px 20px; background: #43a047; color: white; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; }
+        button.danger { background: #e53935; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table, th, td { border: 1px solid #cfd8dc; padding: 12px; text-align: left; }
+        th { background: #f5f7f8; }
+        .player-container { margin-top: 15px; background: #000; text-align: center; border-radius: 6px; overflow: hidden; min-height: 300px; display: flex; align-items: center; justify-content: center;}
+        .controls { margin-top: 15px; display: flex; justify-content: center; gap: 10px; }
+        .controls button { background: #1e88e5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="loginBlock">
+        <h2>Вход в систему VMS</h2>
+        <div class="form-group">
+            <label>Имя пользователя</label>
+            <input type="text" id="loginUser" value="admin">
+        </div>
+        <div class="form-group">
+            <label>Пароль</label>
+            <input type="password" id="loginPass" value="admin123">
+        </div>
+        <button onclick="login()">Авторизоваться</button>
+    </div>
+
+    <div id="vmsBlock" class="hidden">
+        <div class="tabs">
+            <button id="tabViewBtn" class="tab-btn active" onclick="switchTab('view')">Мониторинг</button>
+            <button id="tabCamBtn" class="tab-btn" onclick="switchTab('cam')">Конфигурация камер</button>
+            <button class="danger" style="float:right;" onclick="logout()">Выйти</button>
+        </div>
+
+        <div id="tabCameras" class="hidden">
+            <h3>Подключить камеру</h3>
+            <div class="form-group">
+                <label>Название локации</label>
+                <input type="text" id="camName" placeholder="Камера Склад 1">
+            </div>
+            <div class="form-group">
+                <label>Адрес RTSP потока</label>
+                <input type="text" id="camUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/stream"&gt;
+            </div>
+            <button onclick="addCamera()">Запустить захват</button>
+
+            <h3>Список активных подключений</h3>
+            <table>
+                <thead><tr><th>ID</th><th>Локация</th><th>RTSP Источник</th><th>Управление</th></tr></thead>
+                <tbody id="camerasTable"></tbody>
+            </table>
+        </div>
+
+        <div id="tabView">
+            <div class="form-group">
+                <label>Выбор видеоканала</label>
+                <select id="camSelect" onchange="loadLiveStream()"></select>
+            </div>
+
+            <div id="liveBlock">
+                <h4>Прямой эфир (Live)</h4>
+                <div class="player-container">
+                    <img id="liveImg" style="max-width: 100%; max-height: 500px;" src="" alt="Канал не выбран или недоступен">
+                </div>
+            </div>
+
+            <div id="archiveBlock" style="margin-top:35px;">
+                <h4>Поиск в архиве видеозаписей</h4>
+                <div style="display:flex; gap: 15px; align-items: flex-end;">
+                    <div class="form-group" style="margin:0; flex-grow:1;">
+                        <input type="date" id="archiveDate">
+                    </div>
+                    <button onclick="searchArchive()">Показать файлы</button>
+                </div>
+                <div id="archiveButtons" style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+
+                <div id="archivePlayerBlock" class="hidden" style="margin-top: 25px;">
+                    <h5>Просмотр записи. <span id="currentPlayingTime" style="color:#1e88e5;">00:00:00</span></h5>
+                    <div class="player-container">
+                        <video id="archiveVideo" style="max-width:100%; max-height:500px;" controls></video>
+                    </div>
+                    <div class="controls">
+                        <button onclick="rewind(-10)">⏮ -10 секунд</button>
+                        <button onclick="rewind(10)">+10 секунд ⏭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API_HOST = window.location.origin;
+    let token = localStorage.getItem("vms_token") || "";
+    let role = localStorage.getItem("vms_role") || "";
+
+    if (token) showDashboard();
+
+    function login() {
+        const loginUser = document.getElementById("loginUser").value;
+        const loginPass = document.getElementById("loginPass").value;
+
+        fetch(`${API_HOST}/api/login`, {
+            method: "POST",
+            body: JSON.stringify({ login: loginUser, password: loginPass })
+        })
+        .then(res => { if(!res.ok) throw new Error("Неверные учетные данные"); return res.json(); })
+        .then(data => {
+            token = data.token;
+            role = data.role;
+            localStorage.setItem("vms_token", token);
+            localStorage.setItem("vms_role", role);
+            showDashboard();
+        })
+        .catch(err => alert(err.message));
+    }
+
+    function logout() {
+        localStorage.clear();
+        location.reload();
+    }
+
+    function showDashboard() {
+        document.getElementById("loginBlock").classList.add("hidden");
+        document.getElementById("vmsBlock").classList.remove("hidden");
+        
+        if (role !== "admin") {
+            document.getElementById("tabCamBtn").classList.add("hidden");
+            switchTab('view');
+        } else {
+            loadCamerasTable();
+        }
+        loadCamerasSelect();
+    }
+
+    function switchTab(tab) {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        if (tab === 'cam') {
+            document.getElementById("tabCamBtn").classList.add("active");
+            document.getElementById("tabCameras").classList.remove("hidden");
+            document.getElementById("tabView").classList.add("hidden");
+        } else {
+            document.getElementById("tabViewBtn").classList.add("active");
+            document.getElementById("tabCameras").classList.add("hidden");
+            document.getElementById("tabView").classList.remove("hidden");
+        }
+    }
+
+    function loadCamerasTable() {
+        fetch(`${API_HOST}/api/cameras`, { headers: { "Authorization": token } })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById("camerasTable");
+            tbody.innerHTML = "";
+            data.forEach(c => {
+                tbody.innerHTML += `<tr>
+                    <td>${c.id}</td>
+                    <td>${c.name}</td>
+                    <td>${c.rtsplink}</td>
+                    <td><button class="danger" onclick="deleteCamera(${c.id})">Удалить</button></td>
+                </tr>`;
+            });
+        });
+    }
+
+    function loadCamerasSelect() {
+        fetch(`${API_HOST}/api/cameras`, { headers: { "Authorization": token } })
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById("camSelect");
+            select.innerHTML = '<option value="">-- Выберите видеоканал --</option>';
+            data.forEach(c => {
+                select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+            });
+        });
+    }
+
+    function addCamera() {
+        const name = document.getElementById("camName").value;
+        const rtsplink = document.getElementById("camUrl").value;
+
+        fetch(`${API_HOST}/api/cameras`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": token },
+            body: JSON.stringify({ name, rtsplink })
+        }).then(() => {
+            loadCamerasTable();
+            loadCamerasSelect();
+            document.getElementById("camName").value = "";
+            document.getElementById("camUrl").value = "";
+        });
+    }
+
+    function deleteCamera(id) {
+        if(confirm("Прекратить запись и удалить камеру?")) {
+            fetch(`${API_HOST}/api/cameras/${id}`, {
+                method: "DELETE",
+                headers: { "Authorization": token }
+            }).then(() => {
+                loadCamerasTable();
+                loadCamerasSelect();
+            });
+        }
+    }
+
+    function loadLiveStream() {
+        const camId = document.getElementById("camSelect").value;
+        const img = document.getElementById("liveImg");
+        if (!camId) { img.src = ""; return; }
+        img.src = `${API_HOST}/api/live/${camId}?token=${token}`;
+    }
+
+    function searchArchive() {
+        const camId = document.getElementById("camSelect").value;
+        const date = document.getElementById("archiveDate").value;
+        if (!camId || !date) return alert("Выберите камеру и дату для поиска");
+
+        fetch(`${API_HOST}/api/archive/${camId}?date=${date}`, { headers: { "Authorization": token } })
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById("archiveButtons");
+            container.innerHTML = data.length === 0 ? "Записи за выбранный день отсутствуют." : "";
+            data.forEach(f => {
+                container.innerHTML += `<button style="background:#546e7a;" onclick="playVideo('${f.path}', '${f.time}')">⏱ Фрагмент ${f.time}</button>`;
+            });
+        });
+    }
+
+    const video = document.getElementById("archiveVideo");
+    function playVideo(relativePath, startTime) {
+        document.getElementById("archivePlayerBlock").classList.remove("hidden");
+        document.getElementById("currentPlayingTime").innerText = `Фрагмент: ${startTime}`;
+        video.src = `${API_HOST}/api/stream/${relativePath}`;
+        video.play();
+    }
+
+    function rewind(seconds) {
+        video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+    }
+
+    video.addEventListener("timeupdate", () => {
+        const current = Math.floor(video.currentTime);
+        const mins = String(Math.floor(current / 60)).padStart(2, '0');
+        const secs = String(current % 60).padStart(2, '0');
+        document.getElementById("currentPlayingTime").innerText = `Смещение в плеере: ${mins}:${secs}`;
+    });
+</script>
+</body>
+</html>

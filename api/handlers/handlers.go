@@ -20,6 +20,10 @@ import (
 type HTTPHandlers struct {
 }
 
+func NewHTTPHandlers() *HTTPHandlers {
+	return &HTTPHandlers{}
+}
+
 func (h *HTTPHandlers) HandleCreateCamera(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Use POST method", http.StatusMethodNotAllowed)

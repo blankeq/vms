@@ -2,11 +2,19 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"vms/api/database"
+	"vms/api/dto"
+
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
+
+var JwtSecret string = os.Getenv("JWT_SECRET_KEY")
 
 type LoginRequest struct {
 	Login    string `json:"login"`
@@ -14,9 +22,15 @@ type LoginRequest struct {
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Use POST method", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		utils.RespondWithError(w, http.StatusBadRequest, "Неверный формат запроса")
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
 
@@ -24,12 +38,18 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var passwordHash, role string
 	err := database.DB.QueryRow("SELECT id, password_hash, role FROM users WHERE login = $1", req.Login).Scan(&id, &passwordHash, &role)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Неверный логин или пароль")
+		// errStr := "Wrong login or password"
+
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		utils.RespondWithError(w, http.StatusUnauthorized, "Неверный логин или пароль")
+		// errStr := "Wrong login or password"
+
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 		return
 	}
 
@@ -39,13 +59,24 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 
-	tokenString, err := token.SignedString(JwtSecret)
+	tokenString, err := token.SignedString([]byte(JwtSecret))
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Ошибка генерации токена")
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 		return
 	}
 
-	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"token": tokenString, "role": role})
+	authInfo := map[string]string{"token": tokenString, "role": role}
+
+	b, err := json.MarshalIndent(&authInfo, "", "    ")
+	if err != nil {
+		panic(err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(b); err != nil {
+		fmt.Println("Failed to write HTTP response:", err)
+	}
 }
 
 func AuthMiddleware(next http.Handler) http.Handler {
@@ -61,16 +92,22 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		if tokenStr == "" {
-			utils.RespondWithError(w, http.StatusUnauthorized, "Отсутствует токен доступа")
+			errStr := "No authorization token provided"
+
+			errDTO := dto.NewErrorDTO(errStr, time.Now())
+			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 			return
 		}
 
 		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-			return JwtSecret, nil
+			return []byte(JwtSecret), nil
 		})
 
 		if err != nil || !token.Valid {
-			utils.RespondWithError(w, http.StatusUnauthorized, "Невалидный или просроченный токен")
+			errStr := "Not valid or expired authorization token"
+
+			errDTO := dto.NewErrorDTO(errStr, time.Now())
+			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 			return
 		}
 

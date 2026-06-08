@@ -11,4 +11,10 @@ require gocv.io/x/gocv v0.43.0
 
 require github.com/gorilla/mux v1.8.1
 
-require golang.org/x/sync v0.20.0
+require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
+	golang.org/x/crypto v0.52.0
+	golang.org/x/sync v0.20.0
+)
+
+require github.com/joho/godotenv v1.5.1

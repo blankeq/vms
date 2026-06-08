@@ -1,16 +1,31 @@
 package main
 
 import (
-	"time"
-	"vms/api/record"
+	"fmt"
+	"vms/api/database"
+	"vms/api/handlers"
+	"vms/api/server"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	go record.Manager.StartRecording(1, "rtsp://admin:123456@192.168.1.2:554/stream0")
+	if err := godotenv.Load("../.env"); err != nil {
+		panic(err)
+	}
 
-	time.Sleep(8 * time.Second)
+	if err := database.Init(); err != nil {
+		panic(err)
+	}
 
-	record.Manager.StopRecording(1)
+	httpHandlers := handlers.NewHTTPHandlers()
+	httpServer := server.NewHTTPServer(httpHandlers)
 
-	time.Sleep(5 * time.Second)
+	fmt.Println("HTTP Server started...")
+
+	if err := httpServer.StartServer(); err != nil {
+		fmt.Println("HTTP Server error:", err)
+	}
+
+	fmt.Println("HTTP Server closed...")
 }

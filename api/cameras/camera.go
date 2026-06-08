@@ -5,9 +5,9 @@ import (
 )
 
 type Camera struct {
-	Id       *int
-	Name     string
-	RTSPLink string
+	Id       *int   `json:"id"`
+	Name     string `json:"name"`
+	RTSPLink string `json:"rtsplink"`
 }
 
 func NewCamera(name string, rtsplink string) *Camera {
@@ -20,7 +20,7 @@ func NewCamera(name string, rtsplink string) *Camera {
 func GetCameras() ([]Camera, error) {
 	cameras := make([]Camera, 0)
 
-	rows, err := database.DB.Query("SELECT id, name, rtsplink FROM cameras")
+	rows, err := database.DB.Query("SELECT id, name, rtsp_url FROM cameras")
 	if err != nil {
 		return []Camera{}, err
 	}
@@ -42,7 +42,7 @@ func GetCameras() ([]Camera, error) {
 func GetCamera(cameraId int) (Camera, error) {
 	var c Camera
 
-	err := database.DB.QueryRow("SELECT id, name, rtsplink FROM cameras WHERE id = $1", cameraId).Scan(&c.Id, &c.Name, &c.RTSPLink)
+	err := database.DB.QueryRow("SELECT id, name, rtsp_url FROM cameras WHERE id = $1", cameraId).Scan(&c.Id, &c.Name, &c.RTSPLink)
 	if err != nil {
 		return Camera{}, err
 	}
@@ -51,7 +51,7 @@ func GetCamera(cameraId int) (Camera, error) {
 }
 
 func CreateCamera(camera *Camera) (*Camera, error) {
-	err := database.DB.QueryRow("INSERT INTO cameras (name, rtsplink) VALUES ($1, $2) returning id", camera.Name, camera.RTSPLink).Scan(&camera.Id)
+	err := database.DB.QueryRow("INSERT INTO cameras (name, rtsp_url) VALUES ($1, $2) returning id", camera.Name, camera.RTSPLink).Scan(&camera.Id)
 	if err != nil {
 		return &Camera{}, err
 	}

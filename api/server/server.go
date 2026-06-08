@@ -31,11 +31,15 @@ func (s *HTTPServer) StartServer() error {
 	api.Path("/cameras").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetCameras)
 	api.Path("/cameras").Methods("POST").HandlerFunc(s.HTTPHandlers.HandleCreateCamera)
 	api.Path("/cameras/{id}").Methods("DELETE").HandlerFunc(s.HTTPHandlers.HandleDeleteCamera)
-	api.Path("/archive/{id}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetArchiveFiles)
+	api.Path("/cameras/{id}/start").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleStartCamera)
+	api.Path("/cameras/{id}/stop").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleStopCamera)
+
 	api.Path("/stream/{id}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetStream)
 
-	fileServer := http.FileServer(http.Dir("./recordings"))
-	api.PathPrefix("/stream/").Handler(http.StripPrefix("api/stream/", fileServer))
+	api.Path("/archive/{id}/{date}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetArchiveFiles)
+
+	recordingsServer := http.FileServer(http.Dir("./recordings"))
+	api.PathPrefix("/recordings/").Handler(http.StripPrefix("/recordings/", recordingsServer))
 
 	frontEnd := http.FileServer(http.Dir("./frontend"))
 	router.PathPrefix("/").Handler(frontEnd)

@@ -23,7 +23,7 @@ func GetArchiveFiles(cameraId string, date string) ([]dto.ArchiveFileDTO, error)
 			var af dto.ArchiveFileDTO
 
 			filename := file.Name()
-			path := "/" + cameraId + "/" + "date" + filename
+			path := cameraId + "/" + date + "/" + filename
 			time := strings.TrimSuffix(filename, ".mp4")
 
 			af = dto.NewArchiveFileDTO(path, time)

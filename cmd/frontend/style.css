@@ -159,3 +159,7 @@ th { background: #f5f7f8; }
     from { opacity: 0; transform: translateX(12px); }
     to { opacity: 1; transform: translateX(0); }
 }
+
+#addBtn {
+    margin-bottom: 10px;
+}

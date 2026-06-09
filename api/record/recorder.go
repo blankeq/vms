@@ -29,6 +29,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	r.mtx.Lock()
 
 	if _, ok := r.activeCameras[cameraId]; ok {
+		r.mtx.Unlock()
 		return ErrAlreadyRecording
 	}
 
@@ -39,6 +40,8 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 		return ErrTryingToOpenVideoCapture
 	}
 	defer video.Close()
+
+	fmt.Println("Camera", cameraId, "started recording")
 
 	cameraStream := mjpeg.NewStream()
 	stream.Manager.StartStream(cameraId, cameraStream)
@@ -75,7 +78,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 			fileTime := now.Format("15-04-05") + ".mp4"
 			filePath := dirPath + "/" + fileTime
 
-			writer, err := gocv.VideoWriterFile(filePath, "mp4v", fps, width, height, true)
+			writer, err := gocv.VideoWriterFile(filePath, "avc1", fps, width, height, true)
 			if err != nil {
 				fmt.Println("Failed to write image to file: ", err)
 				time.Sleep(5 * time.Second)
@@ -104,6 +107,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 					buf, err := gocv.IMEncode(".jpg", img)
 					if err == nil {
 						cameraStream.UpdateJPEG(buf.GetBytes())
+						buf.Close()
 					}
 				}
 			}
@@ -118,6 +122,7 @@ func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay
 
 	cancel, ok := r.activeCameras[cameraId]
 	if !ok {
+		r.mtx.Unlock()
 		return ErrCameraNotActive
 	}
 

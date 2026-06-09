@@ -14,7 +14,6 @@ import (
 	"vms/api/stream"
 
 	"github.com/gorilla/mux"
-	"golang.org/x/sync/errgroup"
 )
 
 type HTTPHandlers struct {
@@ -34,12 +33,14 @@ func (h *HTTPHandlers) HandleCreateCamera(w http.ResponseWriter, r *http.Request
 
 	if err := json.NewDecoder(r.Body).Decode(&cameraDTO); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
 
 	if err := cameraDTO.ValidateCameraDTO(); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
@@ -48,6 +49,7 @@ func (h *HTTPHandlers) HandleCreateCamera(w http.ResponseWriter, r *http.Request
 	newCamera, err := cameras.CreateCamera(newCamera)
 	if err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 		return
 	}
@@ -57,6 +59,7 @@ func (h *HTTPHandlers) HandleCreateCamera(w http.ResponseWriter, r *http.Request
 		panic(err)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
@@ -76,14 +79,27 @@ func (h *HTTPHandlers) HandleDeleteCamera(w http.ResponseWriter, r *http.Request
 		errStr := "Failed to convert camera ID to int: " + err.Error()
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
 
 	if err := cameras.DeleteCamera(cameraId); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 		return
+	}
+
+	if err := record.Manager.StopRecording(cameraId); err != nil {
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if !errors.Is(err, record.ErrCameraNotActive) {
+			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -98,6 +114,8 @@ func (h *HTTPHandlers) HandleGetCameras(w http.ResponseWriter, r *http.Request) 
 	cams, err := cameras.GetCameras()
 	if err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 		return
 	}
@@ -107,6 +125,7 @@ func (h *HTTPHandlers) HandleGetCameras(w http.ResponseWriter, r *http.Request) 
 		panic(err)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
@@ -126,6 +145,7 @@ func (h *HTTPHandlers) HandleStartCamera(w http.ResponseWriter, r *http.Request)
 		errStr := "Failed to convert camera ID to int: " + err.Error()
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
@@ -133,24 +153,32 @@ func (h *HTTPHandlers) HandleStartCamera(w http.ResponseWriter, r *http.Request)
 	camera, err := cameras.GetCamera(cameraID)
 	if err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 	}
 
-	var eg errgroup.Group
-	eg.Go(func() error { return record.Manager.StartRecording(*camera.Id, camera.RTSPLink) })
-	if err := eg.Wait(); err != nil {
-		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
-
-		if errors.Is(err, record.ErrAlreadyRecording) {
-			http.Error(w, errDTO.ToString(), http.StatusConflict)
-			return
-		} else {
-			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-			return
-		}
-	}
+	go record.Manager.StartRecording(*camera.Id, camera.RTSPLink)
 
 	w.WriteHeader(http.StatusOK)
+	responseStr := []byte("Камера " + camera.Name + " запущена")
+	if _, err := w.Write(responseStr); err != nil {
+		fmt.Println("Failed to write HTTP response:", err)
+	}
+
+	// var eg errgroup.Group
+	// eg.Go(func() error { return record.Manager.StartRecording(*camera.Id, camera.RTSPLink) })
+	// if err := eg.Wait(); err != nil {
+	// 	errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+	// 	if errors.Is(err, record.ErrAlreadyRecording) {
+	// 		http.Error(w, errDTO.ToString(), http.StatusConflict)
+	// 		return
+	// 	} else {
+	// 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+	// 		return
+	// 	}
+	// }
+
 }
 
 func (h *HTTPHandlers) HandleStopCamera(w http.ResponseWriter, r *http.Request) {
@@ -166,12 +194,15 @@ func (h *HTTPHandlers) HandleStopCamera(w http.ResponseWriter, r *http.Request) 
 		errStr := "Failed to convert camera ID to int: " + err.Error()
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
 
 	if err := record.Manager.StopRecording(cameraID); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+		w.Header().Set("Content-Type", "application/json")
 
 		if errors.Is(err, record.ErrCameraNotActive) {
 			http.Error(w, errDTO.ToString(), http.StatusBadRequest)
@@ -183,6 +214,11 @@ func (h *HTTPHandlers) HandleStopCamera(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusOK)
+
+	responseStr := []byte("Камера " + cameraIdQuery + " отключена")
+	if _, err := w.Write(responseStr); err != nil {
+		fmt.Println("Failed to write HTTP response:", err)
+	}
 }
 
 func (h *HTTPHandlers) HandleGetStream(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +234,7 @@ func (h *HTTPHandlers) HandleGetStream(w http.ResponseWriter, r *http.Request) {
 		errStr := "Failed to convert camera ID to int: " + err.Error()
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
@@ -205,6 +242,7 @@ func (h *HTTPHandlers) HandleGetStream(w http.ResponseWriter, r *http.Request) {
 	stream, err := stream.Manager.GetStream(cameraID)
 	if err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
@@ -223,6 +261,7 @@ func (h *HTTPHandlers) HandleGetArchiveFiles(w http.ResponseWriter, r *http.Requ
 		errStr := "Failed to convert camera ID to int: " + err.Error()
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
 		return
 	}
@@ -232,6 +271,8 @@ func (h *HTTPHandlers) HandleGetArchiveFiles(w http.ResponseWriter, r *http.Requ
 	files, err := archive.GetArchiveFiles(cameraIdQuery, dateQuery)
 	if err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+		w.Header().Set("Content-Type", "application/json")
 
 		if errors.Is(err, archive.ErrFilesNotExist) {
 			http.Error(w, errDTO.ToString(), http.StatusNotFound)
@@ -247,6 +288,7 @@ func (h *HTTPHandlers) HandleGetArchiveFiles(w http.ResponseWriter, r *http.Requ
 		panic(err)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)

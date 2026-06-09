@@ -94,7 +94,7 @@ async function apiFetch(url, options = {}) {
     if (res.status === 204) return null;
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) return res.json();
-    return res.json();
+    return res;
 }
 
 async function login() {

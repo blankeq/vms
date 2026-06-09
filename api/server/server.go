@@ -37,7 +37,8 @@ func (s *HTTPServer) StartServer() error {
 	api.Path("/archive/{id}/{date}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetArchiveFiles)
 
 	recordingsServer := http.FileServer(http.Dir("./recordings"))
-	api.PathPrefix("/recordings/").Handler(http.StripPrefix("/recordings/", recordingsServer))
+	// api.PathPrefix("/recordings/").Handler(http.StripPrefix("api/recordings/", recordingsServer))
+	api.PathPrefix("/recordings/").Handler(recordingsServer)
 
 	frontEnd := http.FileServer(http.Dir("./frontend"))
 	router.PathPrefix("/").Handler(frontEnd)

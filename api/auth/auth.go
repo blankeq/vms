@@ -21,6 +21,18 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type TokenResponse struct {
+	Role  string `json:"role"`
+	Token string `json:"token"`
+}
+
+func NewTokenResponse(role string, token string) TokenResponse {
+	return TokenResponse{
+		Role:  role,
+		Token: token,
+	}
+}
+
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Use POST method", http.StatusMethodNotAllowed)
@@ -38,17 +50,17 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var passwordHash, role string
 	err := database.DB.QueryRow("SELECT id, password_hash, role FROM users WHERE login = $1", req.Login).Scan(&id, &passwordHash, &role)
 	if err != nil {
-		// errStr := "Wrong login or password"
+		errStr := "Wrong login or password"
 
-		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		errDTO := dto.NewErrorDTO(errStr, time.Now())
 		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		// errStr := "Wrong login or password"
+		errStr := "Wrong login or password"
 
-		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		errDTO := dto.NewErrorDTO(errStr, time.Now())
 		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 		return
 	}
@@ -66,9 +78,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authInfo := map[string]string{"token": tokenString, "role": role}
+	tokenResponse := NewTokenResponse(role, tokenString)
 
-	b, err := json.MarshalIndent(&authInfo, "", "    ")
+	b, err := json.MarshalIndent(&tokenResponse, "", "    ")
 	if err != nil {
 		panic(err)
 	}
@@ -83,6 +95,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := r.Header.Get("Authorization")
 		if tokenStr == "" {
+			fmt.Println("im here 2")
 			tokenStr = r.URL.Query().Get("token")
 		} else {
 			parts := strings.SplitN(tokenStr, " ", 2)
@@ -99,14 +112,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
 			return []byte(JwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 		if err != nil || !token.Valid {
-			errStr := "Not valid or expired authorization token"
+			// errStr := "Not valid or expired authorization token"
 
-			errDTO := dto.NewErrorDTO(errStr, time.Now())
+			errDTO := dto.NewErrorDTO(err.Error(), time.Now())
 			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 			return
 		}

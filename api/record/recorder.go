@@ -82,7 +82,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 				continue
 			}
 
-			segmentEnd := time.Now().Add(5 * time.Second)
+			segmentEnd := time.Now().Add(60 * time.Second)
 
 			for time.Now().Before(segmentEnd) {
 				select {

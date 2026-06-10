@@ -132,7 +132,7 @@ func (h *HTTPHandlers) HandleGetCameras(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (h *HTTPHandlers) HandleStartCamera(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandlers) HandleStartRecording(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Use GET method", http.StatusMethodNotAllowed)
 		return
@@ -157,31 +157,20 @@ func (h *HTTPHandlers) HandleStartCamera(w http.ResponseWriter, r *http.Request)
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 	}
 
-	go record.Manager.StartRecording(*camera.Id, camera.RTSPLink)
+	if err := record.Manager.StartRecording(*camera.Id, camera.RTSPLink); err != nil {
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+	}
 
 	w.WriteHeader(http.StatusOK)
-	responseStr := []byte("Камера " + camera.Name + " запущена")
+	responseStr := []byte("Камера " + camera.Name + ": начала запись")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
 	}
-
-	// var eg errgroup.Group
-	// eg.Go(func() error { return record.Manager.StartRecording(*camera.Id, camera.RTSPLink) })
-	// if err := eg.Wait(); err != nil {
-	// 	errDTO := dto.NewErrorDTO(err.Error(), time.Now())
-
-	// 	if errors.Is(err, record.ErrAlreadyRecording) {
-	// 		http.Error(w, errDTO.ToString(), http.StatusConflict)
-	// 		return
-	// 	} else {
-	// 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
-	// 		return
-	// 	}
-	// }
-
 }
 
-func (h *HTTPHandlers) HandleStopCamera(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPHandlers) HandleStopRecording(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Use GET method", http.StatusMethodNotAllowed)
 		return
@@ -214,8 +203,84 @@ func (h *HTTPHandlers) HandleStopCamera(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusOK)
+	responseStr := []byte("Камера " + cameraIdQuery + ": запись остановлена")
+	if _, err := w.Write(responseStr); err != nil {
+		fmt.Println("Failed to write HTTP response:", err)
+	}
+}
 
-	responseStr := []byte("Камера " + cameraIdQuery + " отключена")
+func (h *HTTPHandlers) HandleStartStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Use GET method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cameraIdQuery := mux.Vars(r)["id"]
+
+	cameraID, err := strconv.Atoi(cameraIdQuery)
+	if err != nil {
+		errStr := "Failed to convert camera ID to int: " + err.Error()
+
+		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
+		return
+	}
+
+	camera, err := cameras.GetCamera(cameraID)
+	if err != nil {
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+	}
+
+	if err := stream.Manager.StartStream(*camera.Id, camera.RTSPLink); err != nil {
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	responseStr := []byte("Камера " + camera.Name + ": начала трансляцию")
+	if _, err := w.Write(responseStr); err != nil {
+		fmt.Println("Failed to write HTTP response:", err)
+	}
+}
+
+func (h *HTTPHandlers) HandleStopStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Use GET method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cameraIdQuery := mux.Vars(r)["id"]
+
+	cameraID, err := strconv.Atoi(cameraIdQuery)
+	if err != nil {
+		errStr := "Failed to convert camera ID to int: " + err.Error()
+
+		errDTO := dto.NewErrorDTO(errStr, time.Now())
+		w.Header().Set("Content-Type", "application/json")
+		http.Error(w, errDTO.ToString(), http.StatusBadRequest)
+		return
+	}
+
+	if err := stream.Manager.StopStream(cameraID); err != nil {
+		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if errors.Is(err, stream.ErrStreamNotExist) {
+			http.Error(w, errDTO.ToString(), http.StatusBadRequest)
+			return
+		} else {
+			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	responseStr := []byte("Камера " + cameraIdQuery + ": трансляция остановлена")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
 	}

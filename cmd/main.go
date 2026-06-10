@@ -29,8 +29,3 @@ func main() {
 
 	fmt.Println("HTTP Server closed...")
 }
-
-// TODO:
-// 1. Write StartStream and StartRecording into separate handles
-// 2. Fix archive
-// 3. Fix HandleStartRecording not returning error on start

@@ -96,7 +96,6 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenStr := r.Header.Get("Authorization")
 		if tokenStr == "" {
-			fmt.Println("im here 2")
 			tokenStr = r.URL.Query().Get("token")
 		} else {
 			parts := strings.SplitN(tokenStr, " ", 2)
@@ -118,9 +117,9 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 		if err != nil || !token.Valid {
-			// errStr := "Not valid or expired authorization token"
+			errStr := "Not valid or expired authorization token"
 
-			errDTO := dto.NewErrorDTO(err.Error(), time.Now())
+			errDTO := dto.NewErrorDTO(errStr, time.Now())
 			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
 			return
 		}

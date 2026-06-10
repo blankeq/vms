@@ -6,9 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
-	"vms/api/stream"
 
-	"github.com/hybridgroup/mjpeg"
 	"gocv.io/x/gocv"
 )
 
@@ -27,32 +25,40 @@ var Manager = NewRecordManager()
 
 func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	if _, ok := r.activeCameras[cameraId]; ok {
-		r.mtx.Unlock()
 		return ErrAlreadyRecording
 	}
 
-	r.mtx.Unlock()
-
 	video, err := gocv.OpenVideoCapture(rtspLink)
 	if err != nil {
+		video.Close()
 		return ErrTryingToOpenVideoCapture
 	}
-	defer video.Close()
+
+	dir := fmt.Sprintf("./recordings/%d", cameraId)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		video.Close()
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r.activeCameras[cameraId] = cancel
+
+	go r.recordingLoop(ctx, video, dir)
 
 	fmt.Println("Camera", cameraId, "started recording")
 
-	cameraStream := mjpeg.NewStream()
-	stream.Manager.StartStream(cameraId, cameraStream)
-	defer stream.Manager.StopStream(cameraId)
+	return nil
+}
+
+func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, dir string) {
+	defer video.Close()
 
 	img := gocv.NewMat()
 	defer img.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	r.activeCameras[cameraId] = cancel
-	// defer r.StopRecording(cameraId) - decide how to delete camera from active pool on error
 
 	fps := video.Get(gocv.VideoCaptureFPS)
 	if fps <= 0 {
@@ -61,15 +67,10 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	width := int(video.Get(gocv.VideoCaptureFrameWidth))
 	height := int(video.Get(gocv.VideoCaptureFrameHeight))
 
-	dir := fmt.Sprintf("./recordings/%d", cameraId)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		default:
 			now := time.Now()
 			dirTime := now.Format("02-01-2006")
@@ -91,7 +92,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 				select {
 				case <-ctx.Done():
 					writer.Close()
-					return nil
+					return
 				default:
 					if ok := video.Read(&img); !ok {
 						time.Sleep(10 * time.Millisecond)
@@ -103,12 +104,6 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 					}
 
 					writer.Write(img)
-
-					buf, err := gocv.IMEncode(".jpg", img)
-					if err == nil {
-						cameraStream.UpdateJPEG(buf.GetBytes())
-						buf.Close()
-					}
 				}
 			}
 
@@ -119,17 +114,15 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 
 func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay for writer to finish the file
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	cancel, ok := r.activeCameras[cameraId]
 	if !ok {
-		r.mtx.Unlock()
 		return ErrCameraNotActive
 	}
 
 	cancel()
 	delete(r.activeCameras, cameraId)
-
-	r.mtx.Unlock()
 
 	fmt.Println("Camera", cameraId, "stopped recording")
 

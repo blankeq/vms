@@ -2,6 +2,10 @@ const API_HOST = window.location.origin;
 let token = localStorage.getItem("vms_token") || "";
 let role = localStorage.getItem("vms_role") || "";
 
+let liveStreamPollId = null;
+let liveStreamOnline = false;
+const LIVE_STREAM_POLL_MS = 3000;
+
 const video = document.getElementById("archiveVideo");
 
 if (token) showDashboard();
@@ -120,6 +124,7 @@ async function login() {
 }
 
 function logout() {
+    stopLiveStreamPolling();
     localStorage.clear();
     location.reload();
 }
@@ -135,6 +140,10 @@ function showDashboard() {
         loadCamerasTable();
     }
     loadCamerasSelect();
+
+    if (!document.getElementById("tabView").classList.contains("hidden")) {
+        startLiveStreamPolling();
+    }
 }
 
 function switchTab(tab) {
@@ -144,10 +153,12 @@ function switchTab(tab) {
         document.getElementById("tabCameras").classList.remove("hidden");
         document.getElementById("tabView").classList.add("hidden");
         loadCamerasTable();
+        stopLiveStreamPolling();
     } else {
         document.getElementById("tabViewBtn").classList.add("active");
         document.getElementById("tabCameras").classList.add("hidden");
         document.getElementById("tabView").classList.remove("hidden");
+        startLiveStreamPolling();
     }
 }
 
@@ -168,8 +179,8 @@ function loadCamerasTable() {
                 <td style="word-break: break-all;">${c.rtsplink}</td>
                 <td>
                     <div class="actions">
-                        <button class="secondary small" onclick="startCamera(${c.id})">Старт</button>
-                        <button class="small" onclick="stopCamera(${c.id})">Стоп</button>
+                        <button class="secondary small" onclick="startCameraStream(${c.id})">Старт трансляции</button>
+                        <button class="small" onclick="stopCameraStream(${c.id})">Стоп трансляции</button>
                         <button class="danger small" onclick="deleteCamera(${c.id})">Удалить</button>
                     </div>
                 </td>`;
@@ -223,50 +234,104 @@ function deleteCamera(id) {
         loadCamerasTable();
         loadCamerasSelect();
         if (document.getElementById("camSelect").value === String(id)) {
+            liveStreamOnline = false;
             document.getElementById("liveImg").src = "";
         }
     })
     .catch(err => showError(err, "Ошибка удаления камеры"));
 }
 
-function startCamera(id) {
-    apiFetch(`${API_HOST}/api/cameras/${id}/start`)
+function startCameraStream(id) {
+    apiFetch(`${API_HOST}/api/cameras/${id}/stream/start`)
     .then(() => {
-        showSuccess(`Запись камеры ${id} запущена`);
+        showSuccess(`Трансляция камеры ${id} запущена`);
         if (document.getElementById("camSelect").value === String(id)) loadLiveStream();
     })
-    .catch(err => showError(err, "Ошибка запуска записи"));
+    .catch(err => showError(err, "Ошибка запуска трансляции"));
 }
 
-function stopCamera(id) {
-    apiFetch(`${API_HOST}/api/cameras/${id}/stop`)
+function stopCameraStream(id) {
+    apiFetch(`${API_HOST}/api/cameras/${id}/stream/stop`)
     .then(() => {
-        showSuccess(`Запись камеры ${id} остановлена`);
+        showSuccess(`Трансляция камеры ${id} остановлена`);
         if (document.getElementById("camSelect").value === String(id)) {
+            liveStreamOnline = false;
             document.getElementById("liveImg").src = "";
             setInlineError("liveError");
         }
     })
+    .catch(err => showError(err, "Ошибка остановки трансляции"));
+}
+
+function startRecording(id) {
+    apiFetch(`${API_HOST}/api/cameras/${id}/record/start`)
+    .then(() => showSuccess(`Запись камеры ${id} запущена`))
+    .catch(err => showError(err, "Ошибка запуска записи"));
+}
+
+function stopRecording(id) {
+    apiFetch(`${API_HOST}/api/cameras/${id}/record/stop`)
+    .then(() => showSuccess(`Запись камеры ${id} остановлена`))
     .catch(err => showError(err, "Ошибка остановки записи"));
 }
 
-function startSelectedCamera() {
+function startSelectedRecording() {
     const camId = document.getElementById("camSelect").value;
     if (!camId) return showError("Выберите камеру");
-    startCamera(camId);
+    startRecording(camId);
 }
 
-function stopSelectedCamera() {
+function stopSelectedRecording() {
     const camId = document.getElementById("camSelect").value;
     if (!camId) return showError("Выберите камеру");
-    stopCamera(camId);
+    stopRecording(camId);
 }
 
 function onCameraSelectChange() {
-    loadLiveStream();
+    liveStreamOnline = false;
+    loadLiveStream(false);
     document.getElementById("archiveButtons").innerHTML = "";
     document.getElementById("archivePlayerBlock").classList.add("hidden");
     setInlineError("archiveVideoError");
+}
+
+function startLiveStreamPolling() {
+    stopLiveStreamPolling();
+
+    liveStreamPollId = setInterval(async () => {
+        const camId = document.getElementById("camSelect").value;
+        if (!camId) return;
+
+        if (document.getElementById("tabView").classList.contains("hidden")) return;
+
+        const url = `${API_HOST}/api/stream/${camId}?token=${encodeURIComponent(token)}`;
+
+        try {
+            const apiError = await checkMediaUrl(url);
+
+            if (apiError) {
+                if (liveStreamOnline) {
+                    document.getElementById("liveImg").removeAttribute("src");
+                }
+                liveStreamOnline = false;
+                return;
+            }
+
+            const img = document.getElementById("liveImg");
+            if (!liveStreamOnline || !img.getAttribute("src")) {
+                await loadLiveStream(true);
+            }
+        } catch (_) {
+            liveStreamOnline = false;
+        }
+    }, LIVE_STREAM_POLL_MS);
+}
+
+function stopLiveStreamPolling() {
+    if (liveStreamPollId !== null) {
+        clearInterval(liveStreamPollId);
+        liveStreamPollId = null;
+    }
 }
 
 async function checkMediaUrl(url) {
@@ -288,12 +353,16 @@ async function checkMediaUrl(url) {
     }
 }
 
-async function loadLiveStream() {
+async function loadLiveStream(silent = false) {
     const camId = document.getElementById("camSelect").value;
     const img = document.getElementById("liveImg");
-    setInlineError("liveError");
+
+    if (!silent) {
+        setInlineError("liveError");
+    }
 
     if (!camId) {
+        liveStreamOnline = false;
         img.removeAttribute("src");
         return;
     }
@@ -302,24 +371,35 @@ async function loadLiveStream() {
     try {
         const apiError = await checkMediaUrl(url);
         if (apiError) {
+            liveStreamOnline = false;
             const message = apiError.message;
-            setInlineError("liveError", message);
-            showError({ message, time: apiError.time }, "Ошибка live-потока");
+            if (!silent) {
+                setInlineError("liveError", message);
+                showError({ message, time: apiError.time }, "Ошибка live-потока");
+            }
             img.removeAttribute("src");
             return;
         }
+        liveStreamOnline = true;
+        if (!silent) {
+            setInlineError("liveError");
+        }
         img.src = `${url}&t=${Date.now()}`;
     } catch (err) {
-        const message = showError(err.message || "Не удалось подключиться к потоку", "Ошибка live-потока");
-        setInlineError("liveError", message);
+        liveStreamOnline = false;
+        const message = err.message || "Не удалось подключиться к потоку";
+        if (!silent) {
+            showError(message, "Ошибка live-потока");
+            setInlineError("liveError", message);
+        }
         img.removeAttribute("src");
     }
 }
 
 function onLiveStreamError() {
-    const message = "Не удалось отобразить видеопоток. Убедитесь, что запись камеры запущена.";
+    liveStreamOnline = false;
+    const message = "Не удалось отобразить видеопоток. Убедитесь, что трансляция камеры запущена.";
     setInlineError("liveError", message);
-    showError(message, "Ошибка live-потока");
 }
 
 function toArchiveDate(isoDate) {

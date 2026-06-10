@@ -63,6 +63,7 @@ func (h *HTTPHandlers) HandleCreateCamera(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusCreated)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -99,6 +100,9 @@ func (h *HTTPHandlers) HandleDeleteCamera(w http.ResponseWriter, r *http.Request
 		if !errors.Is(err, record.ErrCameraNotActive) {
 			http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
 			return
+		} else {
+			http.Error(w, errDTO.ToString(), http.StatusBadRequest)
+			return
 		}
 	}
 
@@ -129,6 +133,7 @@ func (h *HTTPHandlers) HandleGetCameras(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -155,18 +160,21 @@ func (h *HTTPHandlers) HandleStartRecording(w http.ResponseWriter, r *http.Reque
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+		return
 	}
 
 	if err := record.Manager.StartRecording(*camera.Id, camera.RTSPLink); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	responseStr := []byte("Камера " + camera.Name + ": начала запись")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -206,6 +214,7 @@ func (h *HTTPHandlers) HandleStopRecording(w http.ResponseWriter, r *http.Reques
 	responseStr := []byte("Камера " + cameraIdQuery + ": запись остановлена")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -232,18 +241,21 @@ func (h *HTTPHandlers) HandleStartStream(w http.ResponseWriter, r *http.Request)
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+		return
 	}
 
 	if err := stream.Manager.StartStream(*camera.Id, camera.RTSPLink); err != nil {
 		errDTO := dto.NewErrorDTO(err.Error(), time.Now())
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, errDTO.ToString(), http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	responseStr := []byte("Камера " + camera.Name + ": начала трансляцию")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -283,6 +295,7 @@ func (h *HTTPHandlers) HandleStopStream(w http.ResponseWriter, r *http.Request) 
 	responseStr := []byte("Камера " + cameraIdQuery + ": трансляция остановлена")
 	if _, err := w.Write(responseStr); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }
 
@@ -357,5 +370,6 @@ func (h *HTTPHandlers) HandleGetArchiveFiles(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(b); err != nil {
 		fmt.Println("Failed to write HTTP response:", err)
+		return
 	}
 }

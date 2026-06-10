@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -120,4 +121,16 @@ func (s *StreamManager) GetStream(cameraId int) (*mjpeg.Stream, error) {
 	}
 
 	return registry.Stream, nil
+}
+
+func (s *StreamManager) StopAll() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	for cameraId, registry := range s.activeStreams {
+		registry.Cancel()
+		delete(s.activeStreams, cameraId)
+	}
+
+	log.Println("Stopped all streams...")
 }

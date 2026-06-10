@@ -3,6 +3,7 @@ package record
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 type RecordManager struct {
 	mtx           sync.Mutex
+	wg            sync.WaitGroup
 	activeCameras map[int]context.CancelFunc
 }
 
@@ -46,6 +48,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r.activeCameras[cameraId] = cancel
+	r.wg.Add(1)
 
 	go r.recordingLoop(ctx, video, dir)
 
@@ -55,6 +58,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 }
 
 func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, dir string) {
+	defer r.wg.Done()
 	defer video.Close()
 
 	img := gocv.NewMat()
@@ -127,4 +131,18 @@ func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay
 	fmt.Println("Camera", cameraId, "stopped recording")
 
 	return nil
+}
+
+func (r *RecordManager) StopAll() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	for cameraId, cancel := range r.activeCameras {
+		cancel()
+		delete(r.activeCameras, cameraId)
+	}
+
+	log.Println("Waiting for recordings to save on disk...")
+	r.wg.Wait()
+	log.Println("Stopped all recordings...")
 }

@@ -1,11 +1,19 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 	"vms/api/auth"
 	"vms/api/handlers"
+	"vms/api/record"
+	"vms/api/stream"
 
 	"github.com/gorilla/mux"
 )
@@ -20,7 +28,7 @@ func NewHTTPServer(httpHandlers *handlers.HTTPHandlers) *HTTPServer {
 	}
 }
 
-func (s *HTTPServer) StartServer() error {
+func (s *HTTPServer) StartServer() {
 	router := mux.NewRouter()
 
 	router.Path("/api/login").Methods("POST").HandlerFunc(auth.LoginHandler)
@@ -47,13 +55,37 @@ func (s *HTTPServer) StartServer() error {
 	ipAddr := os.Getenv("IP_ADDR")
 	port := os.Getenv("PORT")
 
-	if err := http.ListenAndServe(ipAddr+port, router); err != nil {
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-
-		return err
+	server := http.Server{
+		Addr:    ipAddr + port,
+		Handler: router,
 	}
 
-	return nil
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	go func() {
+		log.Println("HTTP Server started at:", ipAddr+port)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal("HTTP Server error:", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Println("Shutting down the HTTP Server...")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Println("Error during shutdown:", err)
+	}
+
+	wg := sync.WaitGroup{}
+
+	wg.Go(record.Manager.StopAll)
+	wg.Go(stream.Manager.StopAll)
+
+	wg.Wait()
+
+	log.Println("HTTP Server closed...")
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"vms/api/database"
 	"vms/api/handlers"
 	"vms/api/server"
@@ -21,11 +20,5 @@ func main() {
 	httpHandlers := handlers.NewHTTPHandlers()
 	httpServer := server.NewHTTPServer(httpHandlers)
 
-	fmt.Println("HTTP Server started...")
-
-	if err := httpServer.StartServer(); err != nil {
-		fmt.Println("HTTP Server error:", err)
-	}
-
-	fmt.Println("HTTP Server closed...")
+	httpServer.StartServer()
 }

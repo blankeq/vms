@@ -31,5 +31,9 @@ func GetArchiveFiles(cameraId string, date string) ([]dto.ArchiveFileDTO, error)
 		}
 	}
 
+	if len(archiveFiles) == 0 {
+		return []dto.ArchiveFileDTO{}, ErrFilesNotExist
+	}
+
 	return archiveFiles, nil
 }

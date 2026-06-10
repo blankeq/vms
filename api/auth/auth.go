@@ -50,7 +50,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var passwordHash, role string
 	err := database.DB.QueryRow("SELECT id, password_hash, role FROM users WHERE login = $1", req.Login).Scan(&id, &passwordHash, &role)
 	if err != nil {
-		errStr := "Wrong login or password"
+		errStr := "Неверный логин или пароль"
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
 		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
@@ -58,7 +58,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)); err != nil {
-		errStr := "Wrong login or password"
+		errStr := "Неверный логин или пароль"
 
 		errDTO := dto.NewErrorDTO(errStr, time.Now())
 		http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
@@ -105,7 +105,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		if tokenStr == "" {
-			errStr := "No authorization token provided"
+			errStr := "Отсутствует токен авторизации"
 
 			errDTO := dto.NewErrorDTO(errStr, time.Now())
 			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)
@@ -117,7 +117,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 		if err != nil || !token.Valid {
-			errStr := "Not valid or expired authorization token"
+			errStr := "Неверный токен авторизации или истек срок действия"
 
 			errDTO := dto.NewErrorDTO(errStr, time.Now())
 			http.Error(w, errDTO.ToString(), http.StatusUnauthorized)

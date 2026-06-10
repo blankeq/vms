@@ -104,7 +104,6 @@ async function apiFetch(url, options = {}) {
 async function login() {
     const loginUser = document.getElementById("loginUser").value;
     const loginPass = document.getElementById("loginPass").value;
-    setInlineError("loginError");
 
     try {
         const data = await apiFetch(`${API_HOST}/api/login`, {
@@ -119,7 +118,6 @@ async function login() {
         showDashboard();
     } catch (err) {
         const message = showError(err, "Ошибка авторизации");
-        setInlineError("loginError", message);
     }
 }
 
@@ -243,8 +241,8 @@ function deleteCamera(id) {
 
 function startCameraStream(id) {
     apiFetch(`${API_HOST}/api/cameras/${id}/stream/start`)
-    .then(() => {
-        showSuccess(`Трансляция камеры ${id} запущена`);
+    .then(data => {
+        showSuccess(data.toString());
         if (document.getElementById("camSelect").value === String(id)) loadLiveStream();
     })
     .catch(err => showError(err, "Ошибка запуска трансляции"));
@@ -252,12 +250,11 @@ function startCameraStream(id) {
 
 function stopCameraStream(id) {
     apiFetch(`${API_HOST}/api/cameras/${id}/stream/stop`)
-    .then(() => {
-        showSuccess(`Трансляция камеры ${id} остановлена`);
+    .then(data => {
+        showSuccess(data.toString());
         if (document.getElementById("camSelect").value === String(id)) {
             liveStreamOnline = false;
             document.getElementById("liveImg").src = "";
-            setInlineError("liveError");
         }
     })
     .catch(err => showError(err, "Ошибка остановки трансляции"));
@@ -265,13 +262,16 @@ function stopCameraStream(id) {
 
 function startRecording(id) {
     apiFetch(`${API_HOST}/api/cameras/${id}/record/start`)
-    .then(() => showSuccess(`Запись камеры ${id} запущена`))
+    .then(data => showSuccess(data.toString()))
     .catch(err => showError(err, "Ошибка запуска записи"));
 }
 
 function stopRecording(id) {
     apiFetch(`${API_HOST}/api/cameras/${id}/record/stop`)
-    .then(() => showSuccess(`Запись камеры ${id} остановлена`))
+    .then(data => {
+        const str = data.toString();
+        showSuccess(str);
+    })
     .catch(err => showError(err, "Ошибка остановки записи"));
 }
 
@@ -292,7 +292,6 @@ function onCameraSelectChange() {
     loadLiveStream(false);
     document.getElementById("archiveButtons").innerHTML = "";
     document.getElementById("archivePlayerBlock").classList.add("hidden");
-    setInlineError("archiveVideoError");
 }
 
 function startLiveStreamPolling() {
@@ -357,10 +356,6 @@ async function loadLiveStream(silent = false) {
     const camId = document.getElementById("camSelect").value;
     const img = document.getElementById("liveImg");
 
-    if (!silent) {
-        setInlineError("liveError");
-    }
-
     if (!camId) {
         liveStreamOnline = false;
         img.removeAttribute("src");
@@ -374,23 +369,18 @@ async function loadLiveStream(silent = false) {
             liveStreamOnline = false;
             const message = apiError.message;
             if (!silent) {
-                setInlineError("liveError", message);
                 showError({ message, time: apiError.time }, "Ошибка live-потока");
             }
             img.removeAttribute("src");
             return;
         }
         liveStreamOnline = true;
-        if (!silent) {
-            setInlineError("liveError");
-        }
         img.src = `${url}&t=${Date.now()}`;
     } catch (err) {
         liveStreamOnline = false;
         const message = err.message || "Не удалось подключиться к потоку";
         if (!silent) {
             showError(message, "Ошибка live-потока");
-            setInlineError("liveError", message);
         }
         img.removeAttribute("src");
     }
@@ -399,7 +389,6 @@ async function loadLiveStream(silent = false) {
 function onLiveStreamError() {
     liveStreamOnline = false;
     const message = "Не удалось отобразить видеопоток. Убедитесь, что трансляция камеры запущена.";
-    setInlineError("liveError", message);
 }
 
 function toArchiveDate(isoDate) {
@@ -418,34 +407,28 @@ function searchArchive() {
     apiFetch(`${API_HOST}/api/archive/${camId}/${date}`)
     .then(data => {
         container.innerHTML = "";
-        if (!data.length) {
-            container.innerHTML = '<p class="empty-msg">Записи за выбранный день отсутствуют.</p>';
-            return;
-        }
+
         data.forEach(f => {
             const btn = document.createElement("button");
-            btn.textContent = `Фрагмент ${f.time}`;
+            btn.textContent = `${f.time}`;
             btn.onclick = () => playVideo(f.path, f.time);
             container.appendChild(btn);
         });
     })
     .catch(err => {
         const message = showError(err, "Ошибка поиска в архиве");
-        container.innerHTML = `<p class="inline-error" style="margin:0;">${escapeHtml(message)}</p>`;
     });
 }
 
 async function playVideo(relativePath, startTime) {
     document.getElementById("archivePlayerBlock").classList.remove("hidden");
     document.getElementById("currentPlayingTime").innerText = `Фрагмент: ${startTime}`;
-    setInlineError("archiveVideoError");
 
     const url = `${API_HOST}/api/recordings/${relativePath}?token=${encodeURIComponent(token)}`;
     try {
         const apiError = await checkMediaUrl(url);
         if (apiError) {
             const message = apiError.message;
-            setInlineError("archiveVideoError", message);
             showError({ message, time: apiError.time }, "Ошибка воспроизведения");
             video.removeAttribute("src");
             return;
@@ -453,25 +436,11 @@ async function playVideo(relativePath, startTime) {
         video.src = url;
         video.play().catch(() => {});
     } catch (err) {
-        const message = showError(err.message || "Не удалось загрузить видео", "Ошибка воспроизведения");
-        setInlineError("archiveVideoError", message);
+        showError("Не удалось загрузить видео", "Ошибка воспроизведения");
     }
 }
 
 video.addEventListener("error", () => {
     const message = "Не удалось воспроизвести видеофайл.";
-    setInlineError("archiveVideoError", message);
     showError(message, "Ошибка воспроизведения");
-});
-
-function rewind(seconds) {
-    video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
-}
-
-video.addEventListener("timeupdate", () => {
-    const current = Math.floor(video.currentTime);
-    const hrs = String(Math.floor(current / 3600)).padStart(2, "0");
-    const mins = String(Math.floor((current % 3600) / 60)).padStart(2, "0");
-    const secs = String(current % 60).padStart(2, "0");
-    document.getElementById("currentPlayingTime").innerText = `Смещение в плеере: ${hrs}:${mins}:${secs}`;
 });

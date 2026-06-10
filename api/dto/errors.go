@@ -2,5 +2,5 @@ package dto
 
 import "errors"
 
-var ErrNameIsBlank error = errors.New("No camera name found")
-var ErrLinkIsBlank error = errors.New("No RTSP Link found")
+var ErrNameIsBlank error = errors.New("Отсутствует имя камеры")
+var ErrLinkIsBlank error = errors.New("Отстутствует RTSP-ссылка")

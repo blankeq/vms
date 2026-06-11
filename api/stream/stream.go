@@ -2,7 +2,6 @@ package stream
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -60,7 +59,7 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string) error {
 
 	go s.streamLoop(ctx, video, stream)
 
-	fmt.Println("Camera", cameraId, "started streaming")
+	log.Println("Camera", cameraId, "started streaming")
 
 	return nil
 }
@@ -106,7 +105,7 @@ func (s *StreamManager) StopStream(cameraId int) error {
 	registry.Cancel()
 	delete(s.activeStreams, cameraId)
 
-	fmt.Println("Camera", cameraId, "stopped streaming")
+	log.Println("Camera", cameraId, "stopped streaming")
 
 	return nil
 }

@@ -52,7 +52,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 
 	go r.recordingLoop(ctx, video, dir)
 
-	fmt.Println("Camera", cameraId, "started recording")
+	log.Println("Camera", cameraId, "started recording")
 
 	return nil
 }
@@ -85,7 +85,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 
 			writer, err := gocv.VideoWriterFile(filePath, "avc1", fps, width, height, true)
 			if err != nil {
-				fmt.Println("Failed to write image to file: ", err)
+				log.Println("Failed to write image to file: ", err)
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -128,7 +128,7 @@ func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay
 	cancel()
 	delete(r.activeCameras, cameraId)
 
-	fmt.Println("Camera", cameraId, "stopped recording")
+	log.Println("Camera", cameraId, "stopped recording")
 
 	return nil
 }

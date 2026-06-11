@@ -24,7 +24,4 @@ func main() {
 }
 
 // TODO:
-// 1. Fix showSuccess()
-// 2. Fix playerContainer size
 // 3. Add human detection
-// 4. Work on errors, reduce repeatable code segments

@@ -69,9 +69,12 @@
             <div id="liveBlock">
                 <h4>Прямой эфир (Live)</h4>
                 <div class="player-container">
-                    <img id="liveImg" style="max-width: 100%; max-height: 500px;" src="" alt="Канал не выбран или недоступен" onerror="onLiveStreamError()">
+                    <div id="liveLoading" class="player-loading hidden">
+                        <div class="spinner"></div>
+                        <span>Подключение к трансляции...</span>
+                    </div>
+                    <img id="liveImg" class="player-media hidden" src="" alt="" onerror="onLiveStreamError()">
                 </div>
-                <div id="liveError" class="inline-error hidden"></div>
                 <div class="controls">
                     <button class="secondary" onclick="startSelectedRecording()">Запустить запись</button>
                     <button class="danger" onclick="stopSelectedRecording()">Остановить запись</button>
@@ -92,7 +95,7 @@
                 <div id="archivePlayerBlock" class="hidden" style="margin-top: 25px;">
                     <h5>Просмотр записи. <span id="currentPlayingTime" style="color: #1e88e5;">00:00:00</span></h5>
                     <div class="player-container">
-                        <video id="archiveVideo" style="max-width: 100%; max-height: 500px;" controls></video>
+                        <video id="archiveVideo" class="player-media" controls></video>
                     </div>
                     <div id="archiveVideoError" class="inline-error hidden"></div>
                 </div>

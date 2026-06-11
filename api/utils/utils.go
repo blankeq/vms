@@ -8,10 +8,10 @@ import (
 	"vms/api/dto"
 )
 
-func RespondWithSuccessString(writer http.ResponseWriter, value string, code int) error {
+func RespondWithSuccessString(writer http.ResponseWriter, message string, code int) error {
 	writer.WriteHeader(code)
 
-	responseMessage := []byte(value)
+	responseMessage := []byte(message)
 
 	_, err := writer.Write(responseMessage)
 	if err != nil {
@@ -21,8 +21,8 @@ func RespondWithSuccessString(writer http.ResponseWriter, value string, code int
 	return nil
 }
 
-func RespondWithSuccessJson(writer http.ResponseWriter, value any, code int) error {
-	responseMessage, err := json.MarshalIndent(&value, "", "    ")
+func RespondWithSuccessJson(writer http.ResponseWriter, message any, code int) error {
+	responseMessage, err := json.MarshalIndent(&message, "", "    ")
 	if err != nil {
 		log.Panicln(err)
 	}

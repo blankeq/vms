@@ -26,10 +26,10 @@ type Detector struct {
 	nmsThresh   float32
 }
 
-func NewDetector(modelPath string, scoreThresh, nmsThresh float32) (*Detector, error) {
+func NewDetector(modelPath string, scoreThresh, nmsThresh float32) (*Detector, error) { // try to use single detector
 	net := gocv.ReadNet(modelPath, "")
 	if net.Empty() {
-		return nil, fmt.Errorf("failed to load YOLO model from path: %s", modelPath)
+		return nil, ErrFailedToLoadModel
 	}
 
 	net.SetPreferableBackend(gocv.NetBackendDefault)
@@ -48,7 +48,7 @@ func (d *Detector) Close() error {
 
 func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 	if img.Empty() {
-		return nil, fmt.Errorf("input frame is empty")
+		return nil, ErrInputFrameIsEmpty
 	}
 
 	blob := gocv.BlobFromImage(*img, 1.0/255.0, image.Pt(yoloWidth, yoloHeight), gocv.NewScalar(0, 0, 0, 0), true, false)
@@ -60,7 +60,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 
 	data, err := outputs.DataPtrFloat32()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get matrix data pointer: %w", err)
+		return nil, ErrFailedToGetPointer
 	}
 
 	imgWidth := float32(img.Cols())

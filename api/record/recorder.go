@@ -57,6 +57,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 		if err != nil {
 			log.Printf("Camera %d error: Failed to load YOLO model: %v. Recording will continue WITHOUT detection.", cameraId, err)
 			detector.Close()
+			detector = nil
 		}
 	} else {
 		detector = nil
@@ -67,11 +68,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 	r.activeCameras[cameraId] = cancel
 	r.wg.Add(1)
 
-	if detector != nil {
-		go r.recordingLoop(ctx, video, detector, dir)
-	} else {
-		go r.recordingLoop(ctx, video, nil, dir)
-	}
+	go r.recordingLoop(ctx, video, detector, dir)
 
 	log.Println("Camera", cameraId, "started recording")
 
@@ -101,6 +98,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 	frameChan := make(chan gocv.Mat, frameBufferSize)
 
 	recWg := sync.WaitGroup{}
+	detectWg := sync.WaitGroup{}
 	recWg.Add(2)
 
 	go func() {
@@ -186,7 +184,10 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 								isProcessing = true
 								detectImg := img.Clone()
 
+								detectWg.Add(1)
+
 								go func(mat gocv.Mat) {
+									defer detectWg.Done()
 									defer mat.Close()
 									detections, _ := detector.Detect(&mat)
 									detMtx.Lock()
@@ -214,6 +215,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 	}()
 
 	recWg.Wait()
+	detectWg.Wait()
 }
 
 // func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, detector *detection.Detector, dir string) {

@@ -62,7 +62,8 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 		detector, err = detection.NewDetector(modelPath, 0.45, 0.5)
 		if err != nil {
 			log.Printf("Camera %d error: Failed to load YOLO model: %v. Recording will continue WITHOUT detection.", cameraId, err)
-			defer detector.Close()
+			detector.Close()
+			detector = nil
 		}
 	} else {
 		detector = nil
@@ -75,11 +76,7 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 	registry := NewStreamRegistry(stream, cancel)
 	s.activeStreams[cameraId] = registry
 
-	if detector != nil {
-		go s.streamLoop(ctx, video, stream, detector)
-	} else {
-		go s.streamLoop(ctx, video, stream, nil)
-	}
+	go s.streamLoop(ctx, video, stream, detector)
 
 	log.Println("Camera", cameraId, "started streaming")
 
@@ -101,6 +98,7 @@ func (s *StreamManager) streamLoop(ctx context.Context, video *gocv.VideoCapture
 	frameChan := make(chan gocv.Mat, frameBufferSize)
 
 	recWg := sync.WaitGroup{}
+	detectWg := sync.WaitGroup{}
 	recWg.Add(2)
 
 	go func() {
@@ -169,7 +167,10 @@ func (s *StreamManager) streamLoop(ctx context.Context, video *gocv.VideoCapture
 							isProcessing = true
 							detectImg := img.Clone()
 
+							detectWg.Add(1)
+
 							go func(mat gocv.Mat) {
+								defer detectWg.Done()
 								defer mat.Close()
 								detections, _ := detector.Detect(&mat)
 								detMtx.Lock()
@@ -199,6 +200,7 @@ func (s *StreamManager) streamLoop(ctx context.Context, video *gocv.VideoCapture
 	}()
 
 	recWg.Wait()
+	detectWg.Wait()
 }
 
 // func (s *StreamManager) streamLoop(ctx context.Context, video *gocv.VideoCapture, stream *mjpeg.Stream, detector *detection.Detector) {

@@ -166,6 +166,9 @@ function loadCamerasTable() {
                 <td style="word-break: break-all;">${c.rtsplink}</td>
                 <td>
                     <div class="actions">
+                        <label class="checkbox-inline">
+                            <input type="checkbox" id="detect-stream-${c.id}"> Включить обнаружение людей
+                        </label>
                         <button class="secondary small" onclick="startCameraStream(${c.id})">Старт трансляции</button>
                         <button class="small" onclick="stopCameraStream(${c.id})">Стоп трансляции</button>
                         <button class="danger small" onclick="deleteCamera(${c.id})">Удалить</button>
@@ -230,7 +233,10 @@ function deleteCamera(id) {
 }
 
 function startCameraStream(id) {
-    apiFetch(`${API_HOST}/api/cameras/${id}/stream/start`)
+    const cb = document.getElementById(`detect-stream-${id}`);
+    const detection = cb ? cb.checked : false;
+
+    apiFetch(`${API_HOST}/api/cameras/${id}/stream/start?detection=${detection}`)
     .then(data => {
         showSuccess(data);
         if (document.getElementById("camSelect").value === String(id)) loadLiveStream();
@@ -252,7 +258,10 @@ function stopCameraStream(id) {
 }
 
 function startRecording(id) {
-    apiFetch(`${API_HOST}/api/cameras/${id}/record/start`)
+    const cb = document.getElementById("detectionRecordCheck");
+    const detection = cb ? cb.checked : false;
+
+    apiFetch(`${API_HOST}/api/cameras/${id}/record/start?detection=${detection}`)
     .then(data => showSuccess(data))
     .catch(err => showError(err, "Ошибка запуска записи"));
 }

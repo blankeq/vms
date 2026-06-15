@@ -112,10 +112,18 @@ func (h *HTTPHandlers) HandleStartRecording(w http.ResponseWriter, r *http.Reque
 	}
 
 	cameraIdQuery := mux.Vars(r)["id"]
+	withDetectionQuery := r.URL.Query().Get("detection")
 
 	cameraID, err := strconv.Atoi(cameraIdQuery)
 	if err != nil {
 		errStr := "Failed to convert camera ID to int: " + err.Error()
+		utils.RespondWithErrorString(w, errStr, http.StatusBadRequest)
+		return
+	}
+
+	withDetection, err := strconv.ParseBool(withDetectionQuery)
+	if err != nil {
+		errStr := "Failed to convert detection param to bool: " + err.Error()
 		utils.RespondWithErrorString(w, errStr, http.StatusBadRequest)
 		return
 	}
@@ -126,7 +134,7 @@ func (h *HTTPHandlers) HandleStartRecording(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := record.Manager.StartRecording(*camera.Id, camera.RTSPLink); err != nil {
+	if err := record.Manager.StartRecording(*camera.Id, camera.RTSPLink, withDetection); err != nil {
 		utils.RespondWithErrorJson(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -177,10 +185,18 @@ func (h *HTTPHandlers) HandleStartStream(w http.ResponseWriter, r *http.Request)
 	}
 
 	cameraIdQuery := mux.Vars(r)["id"]
+	withDetectionQuery := r.URL.Query().Get("detection")
 
 	cameraID, err := strconv.Atoi(cameraIdQuery)
 	if err != nil {
 		errStr := "Failed to convert camera ID to int: " + err.Error()
+		utils.RespondWithErrorString(w, errStr, http.StatusBadRequest)
+		return
+	}
+
+	withDetection, err := strconv.ParseBool(withDetectionQuery)
+	if err != nil {
+		errStr := "Failed to convert detection param to bool: " + err.Error()
 		utils.RespondWithErrorString(w, errStr, http.StatusBadRequest)
 		return
 	}
@@ -191,7 +207,7 @@ func (h *HTTPHandlers) HandleStartStream(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := stream.Manager.StartStream(*camera.Id, camera.RTSPLink); err != nil {
+	if err := stream.Manager.StartStream(*camera.Id, camera.RTSPLink, withDetection); err != nil {
 		utils.RespondWithErrorJson(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

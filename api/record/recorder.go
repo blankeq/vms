@@ -3,13 +3,17 @@ package record
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"log"
 	"os"
 	"sync"
 	"time"
+	"vms/api/detection"
 
 	"gocv.io/x/gocv"
 )
+
+const frameBufferSize = 20
 
 type RecordManager struct {
 	mtx           sync.Mutex
@@ -25,7 +29,7 @@ func NewRecordManager() *RecordManager {
 
 var Manager = NewRecordManager()
 
-func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
+func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetection bool) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -45,24 +49,45 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string) error {
 		return err
 	}
 
+	var detector *detection.Detector
+	if withDetection {
+		var err error
+		modelPath := os.Getenv("YOLO_MODEL")
+		detector, err = detection.NewDetector(modelPath, 0.45, 0.5)
+		if err != nil {
+			log.Printf("Camera %d error: Failed to load YOLO model: %v. Recording will continue WITHOUT detection.", cameraId, err)
+			detector.Close()
+		}
+	} else {
+		detector = nil
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r.activeCameras[cameraId] = cancel
 	r.wg.Add(1)
 
-	go r.recordingLoop(ctx, video, dir)
+	if detector != nil {
+		go r.recordingLoop(ctx, video, detector, dir)
+	} else {
+		go r.recordingLoop(ctx, video, nil, dir)
+	}
 
 	log.Println("Camera", cameraId, "started recording")
 
 	return nil
 }
 
-func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, dir string) {
+func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, detector *detection.Detector, dir string) {
 	defer r.wg.Done()
 	defer video.Close()
 
 	img := gocv.NewMat()
 	defer img.Close()
+
+	if detector != nil {
+		defer detector.Close()
+	}
 
 	fps := video.Get(gocv.VideoCaptureFPS)
 	if fps <= 0 {
@@ -71,52 +96,235 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 	width := int(video.Get(gocv.VideoCaptureFrameWidth))
 	height := int(video.Get(gocv.VideoCaptureFrameHeight))
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			now := time.Now()
-			dirTime := now.Format("02-01-2006")
-			dirPath := dir + "/" + dirTime
-			os.MkdirAll(dirPath, 0755)
-			fileTime := now.Format("15-04-05") + ".mp4"
-			filePath := dirPath + "/" + fileTime
+	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
 
-			writer, err := gocv.VideoWriterFile(filePath, "avc1", fps, width, height, true)
-			if err != nil {
-				log.Println("Failed to write image to file: ", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
+	frameChan := make(chan gocv.Mat, frameBufferSize)
 
-			segmentEnd := time.Now().Add(60 * time.Second)
+	recWg := sync.WaitGroup{}
+	recWg.Add(2)
 
-			for time.Now().Before(segmentEnd) {
+	go func() {
+		defer recWg.Done()
+		defer close(frameChan)
+
+		img := gocv.NewMat()
+
+		for {
+			select {
+			case <-ctx.Done():
+				img.Close()
+				return
+			default:
+				if ok := video.Read(&img); !ok {
+					time.Sleep(10 * time.Millisecond)
+					continue
+				}
+				if img.Empty() {
+					continue
+				}
+
+				newFrame := img.Clone()
+
 				select {
-				case <-ctx.Done():
-					writer.Close()
-					return
+				case frameChan <- newFrame:
 				default:
-					if ok := video.Read(&img); !ok {
-						time.Sleep(10 * time.Millisecond)
-						break
-					}
-
-					if img.Empty() {
-						continue
-					}
-
-					writer.Write(img)
+					newFrame.Close()
+					log.Println("Buffer overflow, dropping frame...")
 				}
 			}
-
-			writer.Close()
 		}
-	}
+	}()
+
+	go func() {
+		defer recWg.Done()
+
+		var (
+			lastDetections []detection.Detection
+			detMtx         sync.Mutex
+			isProcessing   bool
+		)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				now := time.Now()
+				dirTime := now.Format("02-01-2006")
+				dirPath := dir + "/" + dirTime
+				_ = os.MkdirAll(dirPath, 0755)
+				fileTime := now.Format("15-04-05") + ".mp4"
+				filePath := dirPath + "/" + fileTime
+
+				writer, err := gocv.VideoWriterFile(filePath, "avc1", fps, width, height, true)
+				if err != nil {
+					log.Println("Failed to write image to file: ", err)
+					time.Sleep(5 * time.Second)
+					continue
+				}
+
+				segmentEnd := time.Now().Add(60 * time.Second)
+
+				for time.Now().Before(segmentEnd) {
+					select {
+					case <-ctx.Done():
+						writer.Close()
+						return
+					case img, ok := <-frameChan:
+						if !ok {
+							writer.Close()
+							return
+						}
+
+						if img.Empty() {
+							continue
+						}
+
+						if detector != nil {
+							detMtx.Lock()
+							if !isProcessing {
+								isProcessing = true
+								detectImg := img.Clone()
+
+								go func(mat gocv.Mat) {
+									defer mat.Close()
+									detections, _ := detector.Detect(&mat)
+									detMtx.Lock()
+									if detections != nil {
+										lastDetections = detections
+									}
+									isProcessing = false
+									detMtx.Unlock()
+								}(detectImg)
+							}
+							detMtx.Unlock()
+
+							detMtx.Lock()
+							detection.DrawOverlay(&img, lastDetections, green)
+							detMtx.Unlock()
+						}
+
+						writer.Write(img)
+						img.Close()
+					}
+				}
+				writer.Close()
+			}
+		}
+	}()
+
+	recWg.Wait()
 }
 
-func (r *RecordManager) StopRecording(cameraId int) error { // need to add delay for writer to finish the file
+// func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, detector *detection.Detector, dir string) {
+// 	defer r.wg.Done()
+// 	defer video.Close()
+
+// 	img := gocv.NewMat()
+// 	defer img.Close()
+
+// 	if detector != nil {
+// 		defer detector.Close()
+// 	}
+
+// 	fps := video.Get(gocv.VideoCaptureFPS)
+// 	if fps <= 0 {
+// 		fps = 25
+// 	}
+// 	width := int(video.Get(gocv.VideoCaptureFrameWidth))
+// 	height := int(video.Get(gocv.VideoCaptureFrameHeight))
+
+// 	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
+
+// 	var (
+// 		lastDetections []detection.Detection
+// 		detMtx         sync.Mutex
+// 		isProcessing   bool
+// 	)
+
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			return
+// 		default:
+// 			now := time.Now()
+// 			dirTime := now.Format("02-01-2006")
+// 			dirPath := dir + "/" + dirTime
+// 			os.MkdirAll(dirPath, 0755)
+// 			fileTime := now.Format("15-04-05") + ".mp4"
+// 			filePath := dirPath + "/" + fileTime
+
+// 			writer, err := gocv.VideoWriterFile(filePath, "avc1", fps, width, height, true)
+// 			if err != nil {
+// 				log.Println("Failed to write image to file: ", err)
+// 				time.Sleep(5 * time.Second)
+// 				continue
+// 			}
+
+// 			segmentEnd := time.Now().Add(60 * time.Second)
+
+// 			for time.Now().Before(segmentEnd) {
+// 				select {
+// 				case <-ctx.Done():
+// 					writer.Close()
+// 					return
+// 				default:
+// 					if ok := video.Read(&img); !ok {
+// 						time.Sleep(10 * time.Millisecond)
+// 						break
+// 					}
+
+// 					if img.Empty() {
+// 						continue
+// 					}
+
+// 					if detector != nil {
+// 						// detections, err := detector.Detect(&img)
+// 						// if err == nil {
+// 						// 	detection.DrawOverlay(&img, detections,
+// 						// 		struct{ R, G, B, A uint8 }{0, 255, 0, 255})
+// 						// } else {
+// 						// 	log.Printf("Camera: Detection error: %v", err)
+// 						// }
+
+// 						detMtx.Lock()
+
+// 						if !isProcessing {
+// 							isProcessing = true
+
+// 							detectImg := img.Clone()
+
+// 							go func(mat gocv.Mat) {
+// 								defer mat.Close()
+
+// 								detections, err := detector.Detect(&mat)
+
+// 								detMtx.Lock()
+// 								if err == nil {
+// 									lastDetections = detections
+// 								}
+// 								isProcessing = false
+// 								detMtx.Unlock()
+// 							}(detectImg)
+// 						}
+
+// 						detMtx.Unlock()
+
+// 						detMtx.Lock()
+// 						detection.DrawOverlay(&img, lastDetections, green)
+// 						detMtx.Unlock()
+// 					}
+
+// 					writer.Write(img)
+// 				}
+// 			}
+
+// 			writer.Close()
+// 		}
+// 	}
+// }
+
+func (r *RecordManager) StopRecording(cameraId int) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 

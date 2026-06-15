@@ -80,7 +80,12 @@ table, th, td { border: 1px solid #cfd8dc; padding: 10px; text-align: left; }
 
 th { background: #f5f7f8; }
 
-.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
 
 .player-container {
     margin-top: 15px;
@@ -126,7 +131,43 @@ th { background: #f5f7f8; }
     to { transform: rotate(360deg); }
 }
 
-.controls { margin-top: 15px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+    margin-right: 10px;
+}
+
+.checkbox-label input[type="checkbox"],
+.checkbox-inline input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.checkbox-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #555;
+    cursor: pointer;
+    user-select: none;
+    margin-right: 12px;
+}
 
 .logout-btn { margin-left: auto; }
 

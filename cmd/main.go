@@ -24,4 +24,5 @@ func main() {
 }
 
 // TODO:
-// 3. Add human detection
+// 1. Fix perfomance issues happening with detection on.
+// 2. Start streams on startup (if active == 1 in db).

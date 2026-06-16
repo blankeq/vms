@@ -13,7 +13,10 @@ import (
 	"gocv.io/x/gocv"
 )
 
-const frameBufferSize = 20
+const (
+	frameBufferSize   = 20
+	detectionInterval = 300 * time.Millisecond
+)
 
 type RecordManager struct {
 	mtx           sync.Mutex
@@ -49,16 +52,9 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 		return err
 	}
 
-	var detector *detection.Detector
+	var detector *detection.SharedDetector
 	if withDetection {
-		var err error
-		modelPath := os.Getenv("YOLO_MODEL")
-		detector, err = detection.NewDetector(modelPath, 0.45, 0.5)
-		if err != nil {
-			log.Printf("Camera %d error: Failed to load YOLO model: %v. Recording will continue WITHOUT detection.", cameraId, err)
-			detector.Close()
-			detector = nil
-		}
+		detector = detection.MainDetector
 	} else {
 		detector = nil
 	}
@@ -75,16 +71,12 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 	return nil
 }
 
-func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, detector *detection.Detector, dir string) {
+func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapture, detector *detection.SharedDetector, dir string) {
 	defer r.wg.Done()
 	defer video.Close()
 
 	img := gocv.NewMat()
 	defer img.Close()
-
-	if detector != nil {
-		defer detector.Close()
-	}
 
 	fps := video.Get(gocv.VideoCaptureFPS)
 	if fps <= 0 {
@@ -138,6 +130,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 
 		var (
 			lastDetections []detection.Detection
+			lastDetectTime time.Time
 			detMtx         sync.Mutex
 			isProcessing   bool
 		)
@@ -180,20 +173,27 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 
 						if detector != nil {
 							detMtx.Lock()
-							if !isProcessing {
+
+							if !isProcessing && time.Since(lastDetectTime) >= detectionInterval {
 								isProcessing = true
+								lastDetectTime = time.Now()
 								detectImg := img.Clone()
 
 								detectWg.Add(1)
 
-								go func(mat gocv.Mat) {
+								go func(img gocv.Mat) {
 									defer detectWg.Done()
-									defer mat.Close()
-									detections, _ := detector.Detect(&mat)
+									defer img.Close()
+
+									detector.Mtx.Lock()
+									detections, _ := detector.Detector.Detect(&img)
+									detector.Mtx.Unlock()
+
 									detMtx.Lock()
-									if detections != nil {
-										lastDetections = detections
-									}
+									// if detections != nil {
+									// 	lastDetections = detections
+									// }
+									lastDetections = detections
 									isProcessing = false
 									detMtx.Unlock()
 								}(detectImg)
@@ -201,7 +201,10 @@ func (r *RecordManager) recordingLoop(ctx context.Context, video *gocv.VideoCapt
 							detMtx.Unlock()
 
 							detMtx.Lock()
-							detection.DrawOverlay(&img, lastDetections, green)
+							// detection.DrawOverlay(&img, lastDetections, green)
+							if len(lastDetections) > 0 {
+								detection.DrawOverlay(&img, lastDetections, green)
+							}
 							detMtx.Unlock()
 						}
 

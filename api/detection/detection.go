@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log"
+	"sync"
 
 	"gocv.io/x/gocv"
 )
@@ -21,12 +23,12 @@ type Detection struct {
 }
 
 type Detector struct {
-	net         gocv.Net
-	scoreThresh float32
-	nmsThresh   float32
+	net            gocv.Net
+	scoreThreshold float32
+	nmsThreshold   float32
 }
 
-func NewDetector(modelPath string, scoreThresh, nmsThresh float32) (*Detector, error) { // try to use single detector
+func NewDetector(modelPath string, scoreThreshold, nmsThreshold float32) (*Detector, error) { // try to use single detector
 	net := gocv.ReadNet(modelPath, "")
 	if net.Empty() {
 		return nil, ErrFailedToLoadModel
@@ -36,11 +38,30 @@ func NewDetector(modelPath string, scoreThresh, nmsThresh float32) (*Detector, e
 	net.SetPreferableTarget(gocv.NetTargetCPU)
 
 	return &Detector{
-		net:         net,
-		scoreThresh: scoreThresh,
-		nmsThresh:   nmsThresh,
+		net:            net,
+		scoreThreshold: scoreThreshold,
+		nmsThreshold:   nmsThreshold,
 	}, nil
 }
+
+type SharedDetector struct {
+	Mtx      sync.Mutex
+	Detector *Detector
+}
+
+func NewSharedDetector(modelPath string, scoreThreshold, nmsThreshold float32) *SharedDetector {
+	detector, err := NewDetector(modelPath, scoreThreshold, nmsThreshold)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+
+	return &SharedDetector{
+		Detector: detector,
+	}
+}
+
+var MainDetector *SharedDetector
 
 func (d *Detector) Close() error {
 	return d.net.Close()
@@ -74,7 +95,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 	for c := 0; c < numAnchors; c++ {
 		personScore := data[personID*numAnchors+c]
 
-		if personScore > d.scoreThresh {
+		if personScore > d.scoreThreshold {
 			cx := data[0*numAnchors+c] * xScale
 			cy := data[1*numAnchors+c] * yScale
 			w := data[2*numAnchors+c] * xScale
@@ -92,7 +113,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 		return []Detection{}, nil
 	}
 
-	indices := gocv.NMSBoxes(bboxes, confidences, d.scoreThresh, d.nmsThresh)
+	indices := gocv.NMSBoxes(bboxes, confidences, d.scoreThreshold, d.nmsThreshold)
 
 	results := make([]Detection, 0, len(indices))
 	for _, idx := range indices {

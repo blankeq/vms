@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"vms/api/database"
+	"vms/api/detection"
 	"vms/api/handlers"
 	"vms/api/server"
 
@@ -16,6 +18,9 @@ func main() {
 	if err := database.Init(); err != nil {
 		panic(err)
 	}
+
+	var modelPath = os.Getenv("YOLO_MODEL")
+	detection.MainDetector = detection.NewSharedDetector(modelPath, 0.45, 0.5)
 
 	httpHandlers := handlers.NewHTTPHandlers()
 	httpServer := server.NewHTTPServer(httpHandlers)

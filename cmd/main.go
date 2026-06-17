@@ -29,5 +29,4 @@ func main() {
 }
 
 // TODO:
-// 1. Fix perfomance issues happening with detection on.
-// 2. Start streams on startup (if active == 1 in db).
+// 1. Start streams on startup (if active == 1 in db).

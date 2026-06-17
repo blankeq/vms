@@ -139,7 +139,7 @@ func (h *HTTPHandlers) HandleStartRecording(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	responseStr := "Камера " + camera.Name + ": начала запись"
+	responseStr := "Камера " + cameraIdQuery + ": начала запись"
 	if err := utils.RespondWithSuccessString(w, responseStr, http.StatusOK); err != nil {
 		log.Println("Failed to write HTTP response:", err)
 		return
@@ -212,7 +212,7 @@ func (h *HTTPHandlers) HandleStartStream(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	responseStr := "Камера " + camera.Name + ": начала трансляцию"
+	responseStr := "Камера " + cameraIdQuery + ": начала трансляцию"
 	if err := utils.RespondWithSuccessString(w, responseStr, http.StatusOK); err != nil {
 		log.Println("Failed to write HTTP response:", err)
 		return

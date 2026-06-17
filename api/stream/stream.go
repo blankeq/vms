@@ -72,7 +72,7 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 
 	go s.streamLoop(ctx, cameraId, frameCh, stream, detector)
 
-	log.Println("Camera", cameraId, "started streaming")
+	log.Printf("[Camera %d] Started streaming...", cameraId)
 
 	return nil
 }
@@ -153,7 +153,7 @@ func (s *StreamManager) StopStream(cameraId int) error {
 	}
 	delete(s.activeStreams, cameraId)
 
-	log.Println("Camera", cameraId, "stopped streaming")
+	log.Printf("[Camera %d] Stopped streaming...", cameraId)
 
 	return nil
 }
@@ -172,14 +172,16 @@ func (s *StreamManager) GetStream(cameraId int) (*mjpeg.Stream, error) {
 
 func (s *StreamManager) StopAll() {
 	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	cameras := make([]int, 0, len(s.activeStreams))
+	for id := range s.activeStreams {
+		cameras = append(cameras, id)
+	}
+	s.mtx.Unlock()
 
-	for cameraId, registry := range s.activeStreams {
-		registry.Cancel()
-		if err := capture.Manager.Unsubscribe(cameraId, registry.FrameCh); err != nil {
-			log.Println(err)
-		}
-		delete(s.activeStreams, cameraId)
+	log.Println("Waiting for streams to stop...")
+
+	for _, id := range cameras {
+		s.StopStream(id)
 	}
 
 	log.Println("Stopped all streams...")

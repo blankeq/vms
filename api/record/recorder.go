@@ -73,7 +73,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 		return err
 	}
 
-	dir := fmt.Sprintf("./recordings/%d", cameraId)
+	dir := fmt.Sprintf("../recordings/%d", cameraId)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		capture.Manager.Unsubscribe(cameraId, frameCh)
 		return err
@@ -100,7 +100,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegistry, width, height int, fps float64, dir string) {
 	defer func() {
 		capture.Manager.Unsubscribe(registry.cameraId, registry.frameCh)
-		log.Printf("Camera %d recording loop exited", registry.cameraId)
+		log.Printf("[Camera %d] Recording stopped...", registry.cameraId)
 	}()
 
 	detector := detection.MainDetector
@@ -257,7 +257,7 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 
 	delete(r.activeCameras, cameraId)
 
-	log.Println("Camera", cameraId, "stopped recording")
+	// log.Println("Camera", cameraId, "stopped recording")
 
 	return nil
 }
@@ -317,10 +317,10 @@ func startFFmpeg(cameraId int, width, height int, fps float64, dir string) (*exe
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			log.Printf("[FFmpeg camera %d] %s", cameraId, scanner.Text())
+			log.Printf("[FFmpeg | Camera %d] %s", cameraId, scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			log.Printf("[FFmpeg camera %d] stderr read error: %v", cameraId, err)
+			log.Printf("[FFmpeg | Camera %d] stderr read error: %v", cameraId, err)
 		}
 	}()
 
@@ -333,7 +333,7 @@ func startFFmpeg(cameraId int, width, height int, fps float64, dir string) (*exe
 func getVideoInfo(rtspLink string) (int, int, float64, error) {
 	capture, err := gocv.OpenVideoCapture(rtspLink)
 	if err != nil {
-		return 0, 0, 0, ErrTryingToOpenVideoCapture
+		return 0, 0, 0, ErrTryingToGetVideoInfo
 	}
 	defer capture.Close()
 

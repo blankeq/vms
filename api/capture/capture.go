@@ -20,7 +20,7 @@ type CaptureInstance struct {
 }
 
 type CaptureManager struct {
-	mu        sync.Mutex
+	mtx       sync.Mutex
 	instances map[int]*CaptureInstance
 }
 
@@ -32,29 +32,30 @@ func NewCaptureManager() *CaptureManager {
 
 var Manager = NewCaptureManager()
 
-func (m *CaptureManager) Subscribe(cameraID int, rtspLink string) (FrameSubscriber, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (cm *CaptureManager) Subscribe(cameraId int, rtspLink string) (FrameSubscriber, error) {
+	cm.mtx.Lock()
+	defer cm.mtx.Unlock()
 
-	instance, ok := m.instances[cameraID]
+	instance, ok := cm.instances[cameraId]
 	if !ok {
-		cap, err := gocv.OpenVideoCapture(rtspLink)
+		capture, err := gocv.OpenVideoCapture(rtspLink)
 		if err != nil {
-			return nil, err
+			return nil, ErrTryingToOpenVideoCapture
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
+
 		instance = &CaptureInstance{
-			capture:     cap,
+			capture:     capture,
 			subscribers: make(map[FrameSubscriber]struct{}),
 			cancel:      cancel,
 		}
-		m.instances[cameraID] = instance
+		cm.instances[cameraId] = instance
 		instance.wg.Add(1)
 
-		go instance.readLoop(ctx)
+		go instance.readLoop(ctx, cameraId)
 
-		log.Printf("Capture started for camera %d", cameraID)
+		log.Printf("[Camera %d] Capture started...", cameraId)
 	}
 
 	ch := make(FrameSubscriber, 2)
@@ -66,11 +67,11 @@ func (m *CaptureManager) Subscribe(cameraID int, rtspLink string) (FrameSubscrib
 	return ch, nil
 }
 
-func (m *CaptureManager) Unsubscribe(cameraID int, ch FrameSubscriber) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (cm *CaptureManager) Unsubscribe(cameraId int, ch FrameSubscriber) error {
+	cm.mtx.Lock()
+	defer cm.mtx.Unlock()
 
-	instance, ok := m.instances[cameraID]
+	instance, ok := cm.instances[cameraId]
 	if !ok {
 		return ErrInstanceNotExist
 	}
@@ -85,17 +86,20 @@ func (m *CaptureManager) Unsubscribe(cameraID int, ch FrameSubscriber) error {
 
 	if left == 0 {
 		instance.cancel()
+
 		instance.wg.Wait()
+
 		instance.capture.Close()
-		delete(m.instances, cameraID)
-		log.Printf("Capture stopped for camera %d", cameraID)
+		delete(cm.instances, cameraId)
+
+		log.Printf("[Camera %d] Capture stopped...", cameraId)
 	}
 
 	return nil
 }
 
-func (inst *CaptureInstance) readLoop(ctx context.Context) {
-	defer inst.wg.Done()
+func (ci *CaptureInstance) readLoop(ctx context.Context, cameraId int) {
+	defer ci.wg.Done()
 
 	img := gocv.NewMat()
 	defer img.Close()
@@ -105,7 +109,7 @@ func (inst *CaptureInstance) readLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			if ok := inst.capture.Read(&img); !ok {
+			if ok := ci.capture.Read(&img); !ok {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
@@ -113,18 +117,18 @@ func (inst *CaptureInstance) readLoop(ctx context.Context) {
 				continue
 			}
 
-			inst.mtx.RLock()
-			for ch := range inst.subscribers {
+			ci.mtx.RLock()
+			for ch := range ci.subscribers {
 				cloned := img.Clone()
 
 				select {
 				case ch <- cloned:
 				default:
 					cloned.Close()
-					log.Println("Frame subscriber slow, dropping frame...")
+					log.Printf("[Camera %d] Frame subscriber slow, dropping frame...", cameraId)
 				}
 			}
-			inst.mtx.RUnlock()
+			ci.mtx.RUnlock()
 		}
 	}
 }

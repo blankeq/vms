@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	yoloWidth  = 640
-	yoloHeight = 640
-	numAnchors = 8400
-	personID   = 4
+	YoloWidth  = 640
+	YoloHeight = 640
+	NumAnchors = 8400
+	PersonId   = 4
 )
 
 type Detection struct {
@@ -28,8 +28,8 @@ type Detector struct {
 	nmsThreshold   float32
 }
 
-func NewDetector(modelPath string, scoreThreshold, nmsThreshold float32) (*Detector, error) { // try to use single detector
-	net := gocv.ReadNet(modelPath, "")
+func NewDetector(modelPath string, scoreThreshold, nmsThreshold float32) (*Detector, error) {
+	net := gocv.ReadNetFromONNX(modelPath)
 	if net.Empty() {
 		return nil, ErrFailedToLoadModel
 	}
@@ -72,7 +72,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 		return nil, ErrInputFrameIsEmpty
 	}
 
-	blob := gocv.BlobFromImage(*img, 1.0/255.0, image.Pt(yoloWidth, yoloHeight), gocv.NewScalar(0, 0, 0, 0), true, false)
+	blob := gocv.BlobFromImage(*img, 1.0/255.0, image.Pt(YoloWidth, YoloHeight), gocv.NewScalar(0, 0, 0, 0), true, false)
 	defer blob.Close()
 
 	d.net.SetInput(blob, "")
@@ -86,20 +86,20 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 
 	imgWidth := float32(img.Cols())
 	imgHeight := float32(img.Rows())
-	xScale := imgWidth / yoloWidth
-	yScale := imgHeight / yoloHeight
+	xScale := imgWidth / YoloWidth
+	yScale := imgHeight / YoloHeight
 
 	var bboxes []image.Rectangle
 	var confidences []float32
 
-	for c := 0; c < numAnchors; c++ {
-		personScore := data[personID*numAnchors+c]
+	for c := 0; c < NumAnchors; c++ {
+		personScore := data[PersonId*NumAnchors+c]
 
 		if personScore > d.scoreThreshold {
-			cx := data[0*numAnchors+c] * xScale
-			cy := data[1*numAnchors+c] * yScale
-			w := data[2*numAnchors+c] * xScale
-			h := data[3*numAnchors+c] * yScale
+			cx := data[0*NumAnchors+c] * xScale
+			cy := data[1*NumAnchors+c] * yScale
+			w := data[2*NumAnchors+c] * xScale
+			h := data[3*NumAnchors+c] * yScale
 
 			x := int(cx - w/2)
 			y := int(cy - h/2)

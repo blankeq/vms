@@ -8,7 +8,7 @@ import (
 )
 
 func GetArchiveFiles(cameraId string, date string) ([]dto.ArchiveFileDTO, error) {
-	dirPath := "./recordings/" + cameraId + "/" + date
+	dirPath := "../recordings/" + cameraId + "/" + date
 	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		if os.IsNotExist(err) {

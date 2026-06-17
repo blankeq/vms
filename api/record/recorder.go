@@ -17,7 +17,7 @@ import (
 	"gocv.io/x/gocv"
 )
 
-const detectionInterval = 300 * time.Millisecond
+const detectionInterval = 500 * time.Millisecond
 
 type RecordManager struct {
 	mtx           sync.Mutex
@@ -123,7 +123,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 		log.Printf("[Camera %d] Next day restart in %v", registry.cameraId, waitDuration)
 
 		registry.mtx.Lock()
-		cmd, stdin, err := startFFmpeg(ctx, registry.cameraId, width, height, fps, dir)
+		cmd, stdin, err := startFFmpeg(registry.cameraId, width, height, fps, dir)
 		if err != nil {
 			registry.mtx.Unlock()
 			log.Printf("[Camera %d] FFmpeg start error: %v", registry.cameraId, err)
@@ -279,7 +279,7 @@ func (r *RecordManager) StopAll() {
 	log.Println("Stopped all recordings...")
 }
 
-func startFFmpeg(ctx context.Context, cameraId int, width, height int, fps float64, dir string) (*exec.Cmd, io.WriteCloser, error) {
+func startFFmpeg(cameraId int, width, height int, fps float64, dir string) (*exec.Cmd, io.WriteCloser, error) {
 	dateDir := dir + "/" + time.Now().Format("02-01-2006")
 	os.MkdirAll(dateDir, 0755)
 	outputPattern := dateDir + "/" + "%H-%M-%S.mp4"
@@ -304,7 +304,7 @@ func startFFmpeg(ctx context.Context, cameraId int, width, height int, fps float
 		"-strftime", "1",
 		outputPattern,
 	}
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd := exec.Command("ffmpeg", args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, err

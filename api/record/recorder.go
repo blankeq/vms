@@ -17,10 +17,7 @@ import (
 	"gocv.io/x/gocv"
 )
 
-const (
-	frameBufferSize   = 20
-	detectionInterval = 300 * time.Millisecond
-)
+const detectionInterval = 300 * time.Millisecond
 
 type RecordManager struct {
 	mtx           sync.Mutex
@@ -35,16 +32,20 @@ func NewRecordManager() *RecordManager {
 }
 
 type RecordRegistry struct {
-	cameraId int
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	frameCh  capture.FrameSubscriber
-	cancel   context.CancelFunc
+	cameraId      int
+	rtspLink      string
+	withDetection bool
+	mtx           sync.Mutex
+	cmd           *exec.Cmd
+	stdin         io.WriteCloser
+	frameCh       capture.FrameSubscriber
+	cancel        context.CancelFunc
 }
 
-func NewRecordRegistry(cameraId int, cmd *exec.Cmd, stdin io.WriteCloser, frameCh capture.FrameSubscriber, cancel context.CancelFunc) *RecordRegistry {
+func NewRecordRegistry(cameraId int, rtspLink string, withDetection bool, cmd *exec.Cmd, stdin io.WriteCloser, frameCh capture.FrameSubscriber, cancel context.CancelFunc) *RecordRegistry {
 	return &RecordRegistry{
 		cameraId: cameraId,
+		rtspLink: rtspLink,
 		cmd:      cmd,
 		stdin:    stdin,
 		frameCh:  frameCh,
@@ -78,99 +79,167 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 		return err
 	}
 
-	var detector *detection.SharedDetector
-	if withDetection {
-		detector = detection.MainDetector
-	} else {
-		detector = nil
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cmd, stdin, err := startFFmpeg(ctx, cameraId, width, height, fps, dir)
-	if err != nil {
-		capture.Manager.Unsubscribe(cameraId, frameCh)
-		cancel()
-		return err
+	registry := &RecordRegistry{
+		cameraId:      cameraId,
+		rtspLink:      rtspLink,
+		withDetection: withDetection,
+		frameCh:       frameCh,
+		cancel:        cancel,
 	}
-
-	registry := NewRecordRegistry(cameraId, cmd, stdin, frameCh, cancel)
 	r.activeCameras[cameraId] = registry
 
-	go r.recordingLoop(ctx, registry, detector)
+	go r.recordingLoop(ctx, registry, width, height, fps, dir)
 
 	log.Println("Camera", cameraId, "started recording")
 
 	return nil
 }
 
-func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegistry, detector *detection.SharedDetector) {
+func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegistry, width, height int, fps float64, dir string) {
 	defer func() {
-		registry.stdin.Close()
-		if err := registry.cmd.Wait(); err != nil {
-			log.Println("FFmpeg finished with error:", err)
-		}
 		capture.Manager.Unsubscribe(registry.cameraId, registry.frameCh)
+		log.Printf("Camera %d recording loop exited", registry.cameraId)
 	}()
 
-	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
+	detector := detection.MainDetector
+	if !registry.withDetection {
+		detector = nil
+	}
 
-	var (
-		lastDetections []detection.Detection
-		lastDetectTime time.Time
-		detMtx         sync.Mutex
-		isProcessing   bool
-	)
+	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case img, ok := <-registry.frameCh:
-			if !ok {
-				return
-			}
+		default:
+		}
 
-			if detector != nil {
-				detMtx.Lock()
+		now := time.Now()
+		nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+		waitDuration := nextMidnight.Sub(now)
+		log.Printf("[Camera %d] Next day restart in %v", registry.cameraId, waitDuration)
 
-				if !isProcessing && time.Since(lastDetectTime) >= detectionInterval {
-					isProcessing = true
-					lastDetectTime = time.Now()
-					detectImg := img.Clone()
+		registry.mtx.Lock()
+		cmd, stdin, err := startFFmpeg(ctx, registry.cameraId, width, height, fps, dir)
+		if err != nil {
+			registry.mtx.Unlock()
+			log.Printf("[Camera %d] FFmpeg start error: %v", registry.cameraId, err)
+			return
+		}
+		registry.cmd = cmd
+		registry.stdin = stdin
+		registry.mtx.Unlock()
 
-					go func(img gocv.Mat) {
-						defer img.Close()
+		var (
+			lastDetections []detection.Detection
+			lastDetectTime time.Time
+			detMtx         sync.Mutex
+			isProcessing   bool
+		)
 
-						detector.Mtx.Lock()
-						detections, _ := detector.Detector.Detect(&img)
-						detector.Mtx.Unlock()
+		dayEnd := now.Add(waitDuration)
 
-						detMtx.Lock()
-						lastDetections = detections
-						isProcessing = false
-						detMtx.Unlock()
-					}(detectImg)
+	INNERLOOP:
+		for {
+			select {
+			case <-ctx.Done():
+				registry.mtx.Lock()
+				if registry.stdin != nil {
+					registry.stdin.Close()
 				}
-				detMtx.Unlock()
-
-				detMtx.Lock()
-				if len(lastDetections) > 0 {
-					detection.DrawOverlay(&img, lastDetections, green)
+				registry.mtx.Unlock()
+				if registry.cmd != nil {
+					registry.cmd.Wait()
 				}
-				detMtx.Unlock()
-			}
 
-			data, err := img.DataPtrUint8()
-			if err == nil {
-				if _, err := registry.stdin.Write(data); err != nil {
-					log.Println("FFmpeg stdin write error:", err)
+				break INNERLOOP
+			case img, ok := <-registry.frameCh:
+				if !ok {
+					log.Printf("[Camera %d] Frame channel closed", registry.cameraId)
 					return
 				}
-			} else {
-				log.Println("Failed to get raw data:", err)
+
+				if detector != nil {
+					detMtx.Lock()
+					if !isProcessing && time.Since(lastDetectTime) >= detectionInterval {
+						isProcessing = true
+						lastDetectTime = time.Now()
+						detectImg := img.Clone()
+
+						go func(img gocv.Mat) {
+							defer img.Close()
+
+							detector.Mtx.Lock()
+							detections, _ := detector.Detector.Detect(&img)
+							detector.Mtx.Unlock()
+
+							detMtx.Lock()
+							lastDetections = detections
+							isProcessing = false
+							detMtx.Unlock()
+						}(detectImg)
+					}
+					if len(lastDetections) > 0 {
+						detection.DrawOverlay(&img, lastDetections, green)
+					}
+					detMtx.Unlock()
+				}
+
+				data, err := img.DataPtrUint8()
+				if err == nil {
+					registry.mtx.Lock()
+					if registry.stdin != nil {
+						if _, err := registry.stdin.Write(data); err != nil {
+							log.Printf("[Camera %d] Write to FFmpeg stdin error: %v", registry.cameraId, err)
+							registry.mtx.Unlock()
+							img.Close()
+							return
+						}
+					}
+					registry.mtx.Unlock()
+				} else {
+					log.Printf("[Camera %d] Failed to get raw data: %v", registry.cameraId, err)
+				}
+				img.Close()
+
+			case <-time.After(waitDuration):
+				log.Printf("[Camera %d] Midnight reached, restarting FFmpeg", registry.cameraId)
+
+				registry.mtx.Lock()
+				if registry.stdin != nil {
+					registry.stdin.Close()
+				}
+				registry.mtx.Unlock()
+				if registry.cmd != nil {
+					registry.cmd.Wait()
+				}
+
+				break INNERLOOP
 			}
-			img.Close()
+
+			if time.Now().After(dayEnd) {
+				log.Printf("[Camera %d] Day ended (fallback), restarting", registry.cameraId)
+				registry.mtx.Lock()
+				if registry.stdin != nil {
+					registry.stdin.Close()
+				}
+				registry.mtx.Unlock()
+				if registry.cmd != nil {
+					registry.cmd.Wait()
+				}
+
+				break INNERLOOP
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			continue
 		}
 	}
 }
@@ -185,7 +254,7 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 	}
 
 	registry.cancel()
-	capture.Manager.Unsubscribe(cameraId, registry.frameCh)
+
 	delete(r.activeCameras, cameraId)
 
 	log.Println("Camera", cameraId, "stopped recording")
@@ -195,23 +264,29 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 
 func (r *RecordManager) StopAll() {
 	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	for cameraId, registry := range r.activeCameras {
-		registry.cancel()
-		capture.Manager.Unsubscribe(cameraId, registry.frameCh)
-		delete(r.activeCameras, cameraId)
+	cameras := make([]int, 0, len(r.activeCameras))
+	for id := range r.activeCameras {
+		cameras = append(cameras, id)
 	}
+	r.mtx.Unlock()
 
 	log.Println("Waiting for recordings to save on disk...")
-	r.wg.Wait()
+
+	for _, id := range cameras {
+		r.StopRecording(id)
+	}
+
 	log.Println("Stopped all recordings...")
 }
 
 func startFFmpeg(ctx context.Context, cameraId int, width, height int, fps float64, dir string) (*exec.Cmd, io.WriteCloser, error) {
-	outputPattern := dir + "/%d-%m-%Y/%H-%M-%S.mp4"
+	dateDir := dir + "/" + time.Now().Format("02-01-2006")
+	os.MkdirAll(dateDir, 0755)
+	outputPattern := dateDir + "/" + "%H-%M-%S.mp4"
 	args := []string{
 		"-loglevel", "error",
+		"-fflags", "+genpts",
+		"-avoid_negative_ts", "make_zero",
 		"-f", "rawvideo",
 		"-vcodec", "rawvideo",
 		"-s", fmt.Sprintf("%dx%d", width, height),
@@ -223,6 +298,8 @@ func startFFmpeg(ctx context.Context, cameraId int, width, height int, fps float
 		"-crf", "23",
 		"-f", "segment",
 		"-segment_time", "60",
+		"-segment_time_delta", "0.05",
+		"-force_key_frames", "expr:gte(t,n_forced*60)",
 		"-reset_timestamps", "1",
 		"-strftime", "1",
 		outputPattern,

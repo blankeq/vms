@@ -70,14 +70,16 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 	registry := NewStreamRegistry(stream, frameCh, cancel)
 	s.activeStreams[cameraId] = registry
 
-	go s.streamLoop(ctx, frameCh, stream, detector)
+	go s.streamLoop(ctx, cameraId, frameCh, stream, detector)
 
 	log.Println("Camera", cameraId, "started streaming")
 
 	return nil
 }
 
-func (s *StreamManager) streamLoop(ctx context.Context, frameCh capture.FrameSubscriber, stream *mjpeg.Stream, detector *detection.SharedDetector) {
+func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh capture.FrameSubscriber, stream *mjpeg.Stream, detector *detection.SharedDetector) {
+	defer s.StopStream(cameraId)
+
 	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
 
 	var (

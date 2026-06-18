@@ -1,13 +1,14 @@
-FROM gocv/opencv:4.13.0-ubuntu-22.04 AS opencv
+# OpenCV и Go toolchain — официальные pre-built образы GoCV:
+# https://gocv.io/getting-started/docker/
+# https://hub.docker.com/r/gocv/opencv
+#
+# Образ gocv/opencv:4.13.0 уже содержит совместимые OpenCV 4.13 и Go.
+# Не смешивайте его с golang:*-bookworm — библиотеки из разных дистрибутивов
+# несовместимы и приводят к ошибкам сборки/линковки CGO.
 
-FROM golang:1.24-bookworm AS builder
+ARG OPENCV_VERSION=4.13.0
+FROM gocv/opencv:${OPENCV_VERSION} AS builder
 
-COPY --from=opencv /usr/local/lib /usr/local/lib
-COPY --from=opencv /usr/local/include/opencv4 /usr/local/include/opencv4
-COPY --from=opencv /usr/local/lib/pkgconfig /usr/local/lib/pkgconfig
-
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-ENV LD_LIBRARY_PATH=/usr/local/lib
 ENV CGO_ENABLED=1
 ENV GOTOOLCHAIN=auto
 
@@ -22,10 +23,10 @@ COPY cmd ./cmd
 WORKDIR /src/cmd
 RUN go build -o /vms .
 
-FROM gocv/opencv:4.13.0-ubuntu-22.04
+FROM gocv/opencv:${OPENCV_VERSION}
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/cmd

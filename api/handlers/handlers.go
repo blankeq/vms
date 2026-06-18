@@ -69,29 +69,23 @@ func (h *HTTPHandlers) HandleDeleteCamera(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := cameras.DeleteCamera(cameraId); err != nil {
-		utils.RespondWithErrorString(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	if err := record.Manager.StopRecording(cameraId); err != nil {
-		if errors.Is(err, record.ErrCameraNotActive) {
-			utils.RespondWithErrorJson(w, err.Error(), http.StatusBadRequest)
-			return
-		} else {
+		if !errors.Is(err, record.ErrCameraNotActive) {
 			utils.RespondWithErrorJson(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	if err := stream.Manager.StopStream(cameraId); err != nil {
-		if errors.Is(err, record.ErrCameraNotActive) {
-			utils.RespondWithErrorJson(w, err.Error(), http.StatusBadRequest)
-			return
-		} else {
+		if !errors.Is(err, stream.ErrStreamNotExist) {
 			utils.RespondWithErrorJson(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+	}
+
+	if err := cameras.DeleteCamera(cameraId); err != nil {
+		utils.RespondWithErrorString(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)

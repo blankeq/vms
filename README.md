@@ -171,6 +171,10 @@ go run .
 
 ### Запуск в Docker
 
+Сборка использует **официальные pre-built образы GoCV** с OpenCV и Go toolchain — см. [документацию GoCV для Docker](https://gocv.io/getting-started/docker/) и [gocv/opencv на Docker Hub](https://hub.docker.com/r/gocv/opencv).
+
+Базовый образ: `gocv/opencv:4.13.0` (совместим с `gocv v0.43.0` из `go.mod`). OpenCV **не собирается** внутри Dockerfile — используется готовый образ, как рекомендует GoCV. Сборка и runtime выполняются на одном и том же базовом образе (без копирования библиотек в `golang:*-bookworm`).
+
 #### Быстрый старт
 
 ```bash
@@ -212,6 +216,12 @@ docker compose up --build -d
 ```
 
 Поддерживаются переменные из `docker-compose.yml`: `JWT_SECRET_KEY`, `YOLO_SCORE_THRESHOLD`, `YOLO_NMS_THRESHOLD`, `TIMEOUT_CAPTURE`.
+
+Версию OpenCV можно переопределить при сборке (должна совпадать с требованиями GoCV):
+
+```bash
+docker compose build --build-arg OPENCV_VERSION=4.13.0
+```
 
 #### RTSP-камеры в локальной сети
 
@@ -519,6 +529,10 @@ This user is created by `docker/init.sql`. Change the password for production us
 
 ### Docker setup
 
+Build uses **official pre-built images of GoCV** with OpenCV and Go toolchain — link. [GoCV documentation for Docker](https://gocv.io/getting-started/docker/) and [gocv/opencv on Docker Hub](https://hub.docker.com/r/gocv/opencv).
+
+Base image: `gocv/opencv:4.13.0` (compatible with `gocv v0.43.0` from `go.mod`). OpenCV **is not build** inside Dockerfile — pre-built image is used, as GoCV suggests. Build and runtime runs on the same base image (without copying libs into `golang:*-bookworm`).
+
 #### Quick start
 
 ```bash
@@ -560,6 +574,12 @@ docker compose up --build -d
 ```
 
 Supported variables from `docker-compose.yml`: `JWT_SECRET_KEY`, `YOLO_SCORE_THRESHOLD`, `YOLO_NMS_THRESHOLD`, `TIMEOUT_CAPTURE`.
+
+You can change OpenCV version on build (should be acceptable by GoCV):
+
+```bash
+docker compose build --build-arg OPENCV_VERSION=4.13.0
+```
 
 #### RTSP cameras on the local network
 

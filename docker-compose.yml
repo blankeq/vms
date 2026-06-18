@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        OPENCV_VERSION: "4.13.0"
     restart: unless-stopped
     depends_on:
       db:
@@ -28,7 +30,7 @@ services:
     environment:
       DB_DRIVER: postgres
       DB_URL: postgres://postgres:postgres@db:5432/vms?sslmode=disable
-      IP_ADDR: 10.15.15.1
+      IP_ADDR: 0.0.0.0
       PORT: ":8091"
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-ultramegasecretkey}
       YOLO_MODEL: ./models/yolov8n.onnx

@@ -1,0 +1,8 @@
+.git
+.gitignore
+recordings
+*.mp4
+.env
+README.md
+docker-compose*.yml
+Dockerfile

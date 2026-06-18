@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: vms
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  vms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8091:8091"
+    environment:
+      DB_DRIVER: postgres
+      DB_URL: postgres://postgres:postgres@db:5432/vms?sslmode=disable
+      IP_ADDR: 10.15.15.1
+      PORT: ":8091"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-ultramegasecretkey}
+      YOLO_MODEL: ./models/yolov8n.onnx
+      YOLO_SCORE_THRESHOLD: ${YOLO_SCORE_THRESHOLD:-0.45}
+      YOLO_NMS_THRESHOLD: ${YOLO_NMS_THRESHOLD:-0.5}
+      RECORDINGS_DIR: ../recordings
+      TIMEOUT_CAPTURE: ${TIMEOUT_CAPTURE:-3000000}
+    volumes:
+      - recordings:/app/recordings
+      - ./models:/app/cmd/models:ro
+    # Для доступа к RTSP-камерам в локальной сети хоста раскомментируйте:
+    # network_mode: host
+
+volumes:
+  postgres_data:
+  recordings:

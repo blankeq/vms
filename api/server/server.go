@@ -46,7 +46,7 @@ func (s *HTTPServer) StartServer() {
 	api.Path("/stream/{id}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetStream)
 	api.Path("/archive/{id}/{date}").Methods("GET").HandlerFunc(s.HTTPHandlers.HandleGetArchiveFiles)
 
-	recordingsServer := http.FileServer(http.Dir("./recordings"))
+	recordingsServer := http.FileServer(http.Dir(record.RecordingsDir))
 	api.PathPrefix("/recordings/").Handler(http.StripPrefix("/api/recordings/", recordingsServer))
 
 	frontEnd := http.FileServer(http.Dir("./frontend"))

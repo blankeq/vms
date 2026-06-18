@@ -295,22 +295,51 @@ function onCameraSelectChange() {
 function setLivePlayerState(state) {
     const loading = document.getElementById("liveLoading");
     const img = document.getElementById("liveImg");
+    const errorBlock = document.getElementById("liveError"); 
 
     loading.classList.toggle("hidden", state !== "loading");
     img.classList.toggle("hidden", state !== "playing");
+    errorBlock.classList.toggle("hidden", state !== "error");
 }
 
 function connectLiveStream(url) {
     const img = document.getElementById("liveImg");
+    setLivePlayerState("loading");
 
-    img.onload = () => {
-        liveStreamOnline = true;
+    img.onload = function() {
+        if (!liveStreamOnline) {
+            liveStreamOnline = true;
+        }
         setLivePlayerState("playing");
     };
-    img.onerror = () => onLiveStreamError();
 
-    setLivePlayerState("loading");
-    img.src = `${url}&t=${Date.now()}`;
+    img.onerror = function() {
+        if (liveStreamOnline) { 
+            liveStreamOnline = false;
+            setLivePlayerState("error");
+            img.removeAttribute("src");
+        }
+    };
+
+    img.onabort = function() {
+        if (liveStreamOnline) {
+            liveStreamOnline = false;
+            setLivePlayerState("error");
+            img.removeAttribute("src");
+        }
+    };
+
+    img.src = url;
+}
+
+function retryLiveStream() {
+    const camId = document.getElementById("camSelect").value;
+    if (!camId) return;
+    
+    liveStreamOnline = false;
+    
+    const url = `${API_HOST}/api/cameras/${camId}/stream?token=${encodeURIComponent(token)}&t=${new Date().getTime()}`;
+    connectLiveStream(url);
 }
 
 function startLiveStreamPolling() {

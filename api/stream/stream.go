@@ -14,6 +14,7 @@ import (
 )
 
 const detectionInterval = 500 * time.Millisecond
+const timeoutCapture = 5 * time.Second
 
 type StreamManager struct {
 	mtx           sync.Mutex
@@ -29,16 +30,16 @@ func NewStreamManager() *StreamManager {
 var Manager = NewStreamManager()
 
 type StreamRegistry struct {
-	Stream  *mjpeg.Stream
-	FrameCh capture.FrameSubscriber
-	Cancel  context.CancelFunc
+	stream  *mjpeg.Stream
+	frameCh capture.FrameSubscriber
+	cancel  context.CancelFunc
 }
 
 func NewStreamRegistry(stream *mjpeg.Stream, frameCh capture.FrameSubscriber, cancel context.CancelFunc) *StreamRegistry {
 	return &StreamRegistry{
-		Stream:  stream,
-		FrameCh: frameCh,
-		Cancel:  cancel,
+		stream:  stream,
+		frameCh: frameCh,
+		cancel:  cancel,
 	}
 }
 
@@ -78,7 +79,10 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 }
 
 func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh capture.FrameSubscriber, stream *mjpeg.Stream, detector *detection.SharedDetector) {
-	defer s.StopStream(cameraId)
+	defer func() {
+		// s.StopStream(cameraId)
+		log.Printf("[Camera %d] Stopped streaming...", cameraId)
+	}()
 
 	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
 
@@ -95,6 +99,7 @@ func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh ca
 			return
 		case img, ok := <-frameCh:
 			if !ok {
+				log.Printf("[Camera %d] Frame channel closed...", cameraId)
 				return
 			}
 
@@ -134,7 +139,16 @@ func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh ca
 				buf.Close()
 			}
 			img.Close()
+		case <-time.After(timeoutCapture):
+			log.Printf("[Camera %d] No new frames incoming. Automatically shutting down stream...", cameraId)
+
+			go func(id int) {
+				s.StopStream(id)
+			}(cameraId)
+
+			return
 		}
+
 	}
 }
 
@@ -147,13 +161,13 @@ func (s *StreamManager) StopStream(cameraId int) error {
 		return ErrStreamNotExist
 	}
 
-	registry.Cancel()
-	if err := capture.Manager.Unsubscribe(cameraId, registry.FrameCh); err != nil {
+	registry.cancel()
+	if err := capture.Manager.Unsubscribe(cameraId, registry.frameCh); err != nil {
 		log.Println(err)
 	}
 	delete(s.activeStreams, cameraId)
 
-	log.Printf("[Camera %d] Stopped streaming...", cameraId)
+	// log.Printf("[Camera %d] Stopped streaming...", cameraId)
 
 	return nil
 }
@@ -167,7 +181,7 @@ func (s *StreamManager) GetStream(cameraId int) (*mjpeg.Stream, error) {
 		return &mjpeg.Stream{}, ErrStreamNotExist
 	}
 
-	return registry.Stream, nil
+	return registry.stream, nil
 }
 
 func (s *StreamManager) StopAll() {

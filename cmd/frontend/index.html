@@ -73,6 +73,14 @@
                         <div class="spinner"></div>
                         <span>Подключение к трансляции...</span>
                     </div>
+                    <div id="liveError" class="player-loading hidden" style="background: rgba(38, 50, 56, 0.95); z-index: 5;">
+                        <span style="font-size: 32px;">🛑</span>
+                        <span style="font-weight: bold; color: #ff8a80;">Связь с камерой утеряна</span>
+                        <span style="font-size: 13px; color: #cfd8dc; max-width: 300px; text-align: center; margin: 4px 0 12px 0;">
+                            Трансляция была автоматически остановлена сервером из-за отсутствия кадров.
+                        </span>
+                        <button class="secondary small" onclick="retryLiveStream()">Подключиться снова</button>
+                    </div>
                     <img id="liveImg" class="player-media hidden" src="" alt="" onerror="onLiveStreamError()">
                 </div>
                 <div class="controls">

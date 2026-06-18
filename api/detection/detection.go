@@ -24,11 +24,11 @@ type Detection struct {
 
 type Detector struct {
 	net            gocv.Net
-	scoreThreshold float32
-	nmsThreshold   float32
+	scoreThreshold float64
+	nmsThreshold   float64
 }
 
-func NewDetector(modelPath string, scoreThreshold, nmsThreshold float32) (*Detector, error) {
+func NewDetector(modelPath string, scoreThreshold, nmsThreshold float64) (*Detector, error) {
 	net := gocv.ReadNetFromONNX(modelPath)
 	if net.Empty() {
 		return nil, ErrFailedToLoadModel
@@ -49,7 +49,7 @@ type SharedDetector struct {
 	Detector *Detector
 }
 
-func NewSharedDetector(modelPath string, scoreThreshold, nmsThreshold float32) *SharedDetector {
+func NewSharedDetector(modelPath string, scoreThreshold, nmsThreshold float64) *SharedDetector {
 	detector, err := NewDetector(modelPath, scoreThreshold, nmsThreshold)
 	if err != nil {
 		log.Println(err)
@@ -95,7 +95,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 	for c := 0; c < NumAnchors; c++ {
 		personScore := data[PersonId*NumAnchors+c]
 
-		if personScore > d.scoreThreshold {
+		if personScore > float32(d.scoreThreshold) {
 			cx := data[0*NumAnchors+c] * xScale
 			cy := data[1*NumAnchors+c] * yScale
 			w := data[2*NumAnchors+c] * xScale
@@ -113,7 +113,7 @@ func (d *Detector) Detect(img *gocv.Mat) ([]Detection, error) {
 		return []Detection{}, nil
 	}
 
-	indices := gocv.NMSBoxes(bboxes, confidences, d.scoreThreshold, d.nmsThreshold)
+	indices := gocv.NMSBoxes(bboxes, confidences, float32(d.scoreThreshold), float32(d.nmsThreshold))
 
 	results := make([]Detection, 0, len(indices))
 	for _, idx := range indices {

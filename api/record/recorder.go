@@ -18,6 +18,9 @@ import (
 )
 
 const detectionInterval = 500 * time.Millisecond
+const timeoutCapture = 5 * time.Second
+
+var RecordingsDir string
 
 type RecordManager struct {
 	mtx           sync.Mutex
@@ -73,7 +76,7 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 		return err
 	}
 
-	dir := fmt.Sprintf("../recordings/%d", cameraId)
+	dir := fmt.Sprintf(RecordingsDir+"/%d", cameraId)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		capture.Manager.Unsubscribe(cameraId, frameCh)
 		return err
@@ -92,14 +95,14 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 
 	go r.recordingLoop(ctx, registry, width, height, fps, dir)
 
-	log.Println("Camera", cameraId, "started recording")
+	log.Printf("[Camera %d] Started recording...", cameraId)
 
 	return nil
 }
 
 func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegistry, width, height int, fps float64, dir string) {
 	defer func() {
-		capture.Manager.Unsubscribe(registry.cameraId, registry.frameCh)
+		// r.StopRecording(registry.cameraId)
 		log.Printf("[Camera %d] Recording stopped...", registry.cameraId)
 	}()
 
@@ -158,7 +161,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 				break INNERLOOP
 			case img, ok := <-registry.frameCh:
 				if !ok {
-					log.Printf("[Camera %d] Frame channel closed", registry.cameraId)
+					log.Printf("[Camera %d] Frame channel closed...", registry.cameraId)
 					return
 				}
 
@@ -218,6 +221,15 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 				}
 
 				break INNERLOOP
+
+			case <-time.After(timeoutCapture):
+				log.Printf("[Camera %d] No new frames incoming. Automatically shutting down recording...", registry.cameraId)
+
+				go func(id int) {
+					r.StopRecording(id)
+				}(registry.cameraId)
+
+				return
 			}
 
 			if time.Now().After(dayEnd) {
@@ -254,7 +266,9 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 	}
 
 	registry.cancel()
-
+	if err := capture.Manager.Unsubscribe(cameraId, registry.frameCh); err != nil {
+		log.Println(err)
+	}
 	delete(r.activeCameras, cameraId)
 
 	// log.Println("Camera", cameraId, "stopped recording")

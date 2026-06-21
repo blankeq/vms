@@ -16,5 +16,4 @@ VALUES (
     'admin',
     '$2b$10$V22uRb8lhizhJyhekQctrOUxs8Z7LkdOvvgQjWPw9kpe5T/SeW7Dm',
     'admin'
-)
-ON CONFLICT (login) DO NOTHING;
+);

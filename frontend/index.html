@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление камерами (VMS)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="toastContainer"></div>
+
+<div class="container">
+    <div id="loginBlock">
+        <h2>Вход в VMS</h2>
+        <div class="form-group">
+            <label for="loginUser">Имя пользователя</label>
+            <input type="text" id="loginUser" value="admin" autocomplete="username">
+        </div>
+        <div class="form-group">
+            <label for="loginPass">Пароль</label>
+            <input type="password" id="loginPass" value="admin123" autocomplete="current-password">
+        </div>
+        <button onclick="login()">Авторизоваться</button>
+        <div id="loginError" class="inline-error hidden"></div>
+    </div>
+
+    <div id="vmsBlock" class="hidden">
+        <div class="tabs">
+            <button id="tabViewBtn" class="tab-btn active" onclick="switchTab('view')">Мониторинг</button>
+            <button id="tabCamBtn" class="tab-btn" onclick="switchTab('cam')">Конфигурация камер</button>
+            <button class="danger logout-btn" onclick="logout()">Выйти</button>
+        </div>
+
+        <div id="tabCameras" class="hidden">
+            <h3>Подключить камеру</h3>
+            <div class="form-group">
+                <label for="camName">Название локации</label>
+                <input type="text" id="camName" placeholder="Камера Склад 1">
+            </div>
+            <div class="form-group">
+                <label for="camUrl">Адрес RTSP потока</label>
+                <input type="text" id="camUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/stream">
+            </div>
+            <button id="addBtn" onclick="addCamera()">Добавить камеру</button>
+
+            <h3>Список камер</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Локация</th>
+                        <th>RTSP источник</th>
+                        <th>Управление</th>
+                    </tr>
+                </thead>
+                <tbody id="camerasTable"></tbody>
+            </table>
+        </div>
+
+        <div id="tabView">
+            <div class="form-group">
+                <label for="camSelect">Выбор видеоканала</label>
+                <select id="camSelect" onchange="onCameraSelectChange()">
+                    <option value="">-- Выберите видеоканал --</option>
+                </select>
+            </div>
+
+            <div id="liveBlock">
+                <h4>Прямой эфир (Live)</h4>
+                <div class="player-container">
+                    <div id="liveLoading" class="player-loading hidden">
+                        <div class="spinner"></div>
+                        <span>Подключение к трансляции...</span>
+                    </div>
+                    <div id="liveError" class="player-loading hidden" style="background: rgba(38, 50, 56, 0.95); z-index: 5;">
+                        <span style="font-size: 32px;">🛑</span>
+                        <span style="font-weight: bold; color: #ff8a80;">Связь с камерой утеряна</span>
+                        <span style="font-size: 13px; color: #cfd8dc; max-width: 300px; text-align: center; margin: 4px 0 12px 0;">
+                            Трансляция была автоматически остановлена сервером из-за отсутствия кадров.
+                        </span>
+                        <button class="secondary small" onclick="retryLiveStream()">Подключиться снова</button>
+                    </div>
+                    <img id="liveImg" class="player-media hidden" src="" alt="" onerror="onLiveStreamError()">
+                </div>
+                <div class="controls">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="detectionRecordCheck"> Включить обнаружение людей
+                    </label>
+                    <button class="secondary" onclick="startSelectedRecording()">Запустить запись</button>
+                    <button class="danger" onclick="stopSelectedRecording()">Остановить запись</button>
+                </div>
+            </div>
+
+            <div id="archiveBlock" style="margin-top: 35px;">
+                <h4>Поиск в архиве видеозаписей</h4>
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 200px;">
+                        <label for="archiveDate">Дата записи</label>
+                        <input type="date" id="archiveDate">
+                    </div>
+                    <button class="secondary" onclick="searchArchive()">Показать файлы</button>
+                </div>
+                <div id="archiveButtons"></div>
+
+                <div id="archivePlayerBlock" class="hidden" style="margin-top: 25px;">
+                    <h5>Просмотр записи. <span id="currentPlayingTime" style="color: #1e88e5;">00:00:00</span></h5>
+                    <div class="player-container">
+                        <video id="archiveVideo" class="player-media" controls></video>
+                    </div>
+                    <div id="archiveVideoError" class="inline-error hidden"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

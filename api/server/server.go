@@ -49,7 +49,7 @@ func (s *HTTPServer) StartServer() {
 	recordingsServer := http.FileServer(http.Dir(record.RecordingsDir))
 	api.PathPrefix("/recordings/").Handler(http.StripPrefix("/api/recordings/", recordingsServer))
 
-	frontEnd := http.FileServer(http.Dir("./frontend"))
+	frontEnd := http.FileServer(http.Dir("../frontend"))
 	router.PathPrefix("/").Handler(frontEnd)
 
 	ipAddr := os.Getenv("IP_ADDR")

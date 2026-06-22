@@ -84,17 +84,18 @@ func (s *StreamManager) StartStream(cameraId int, rtspLink string, withDetection
 
 func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh capture.FrameSubscriber, stream *mjpeg.Stream, detector *detection.SharedDetector) {
 	defer func() {
-		// s.StopStream(cameraId)
 		log.Printf("[Camera %d] Stopped streaming...", cameraId)
 	}()
 
 	green := color.RGBA{R: 0, G: 255, B: 0, A: 255}
 
 	var (
-		lastDetections []detection.Detection
-		lastDetectTime time.Time
-		detMtx         sync.Mutex
-		isProcessing   bool
+		lastDetections    []detection.Detection
+		lastDetectTime    time.Time
+		detMtx            sync.Mutex
+		isProcessing      bool
+		notificationTimer = time.Now()
+		notifyMtx         sync.Mutex
 	)
 
 	alertDir := fmt.Sprintf(record.RecordingsDir+"/%d", cameraId)
@@ -138,15 +139,23 @@ func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh ca
 				if len(lastDetections) > 0 {
 					detection.DrawOverlay(&img, lastDetections, green)
 
-					if time.Now().After(notification.NotificationTimer) {
+					notifyMtx.Lock()
+					if time.Now().After(notificationTimer) {
+						notificationTimer = notificationTimer.Add(notification.NotificationCooldown)
+
 						filename := dateDir + "/" + time.Now().Format("15-04-05") + ".jpg"
 
-						if ok := gocv.IMWrite(filename, img); ok {
-							if err := notification.SendMessage(notification.MailClient, filename); err == nil {
-								notification.NotificationTimer.Add(notification.NotificationCooldown)
+						mat := img.Clone()
+						go func(img gocv.Mat, filename string) {
+							defer img.Close()
+
+							if ok := gocv.IMWrite(filename, img); ok {
+								notification.SendMessage(notification.MailClient, filename, cameraId)
 							}
-						}
+						}(mat, filename)
+
 					}
+					notifyMtx.Unlock()
 				}
 				detMtx.Unlock()
 			}

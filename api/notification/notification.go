@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 
 const NotificationCooldown = 5 * time.Minute
 
-var NotificationTimer = time.Now()
 var MailClient *mail.Client
 
 func NewMailClient(ctx context.Context, smptServer, smtpUsername, smtpPassword string) (*mail.Client, error) {
@@ -27,16 +27,18 @@ func NewMailClient(ctx context.Context, smptServer, smtpUsername, smtpPassword s
 	return client, nil
 }
 
-func SendMessage(client *mail.Client, imagePath string) error {
+func SendMessage(client *mail.Client, imagePath string, cameraId int) error {
 	message := mail.NewMsg()
 
-	if err := message.From("testvms123@outlook.com"); err != nil {
+	if err := message.From("artemartemartem04@gmail.com"); err != nil {
 		log.Panic(err)
 	}
 
 	if err := message.To("fio-11111@yandex.ru"); err != nil {
 		log.Panic(err)
 	}
+
+	message.Subject(fmt.Sprintf("[Камера %d] Обнаружение", cameraId))
 
 	message.SetBodyString(mail.TypeTextPlain, "Был обнаружен человек на камере")
 	message.AttachFile(imagePath)

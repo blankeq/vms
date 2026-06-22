@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/wneessen/go-mail"
@@ -20,21 +21,20 @@ func NewMailClient(ctx context.Context, smptServer, smtpUsername, smtpPassword s
 		return &mail.Client{}, err
 	}
 
-	if err := client.DialWithContext(ctx); err != nil {
-		return &mail.Client{}, err
-	}
-
 	return client, nil
 }
 
 func SendMessage(client *mail.Client, imagePath string, cameraId int) error {
 	message := mail.NewMsg()
 
-	if err := message.From("artemartemartem04@gmail.com"); err != nil {
+	from := os.Getenv("SMTP_USERNAME")
+	if err := message.From(from); err != nil {
 		log.Panic(err)
 	}
 
-	if err := message.To("fio-11111@yandex.ru"); err != nil {
+	to := os.Getenv("NOTIFY_TO")
+
+	if err := message.To(to); err != nil {
 		log.Panic(err)
 	}
 
@@ -43,7 +43,7 @@ func SendMessage(client *mail.Client, imagePath string, cameraId int) error {
 	message.SetBodyString(mail.TypeTextPlain, "Был обнаружен человек на камере")
 	message.AttachFile(imagePath)
 
-	if err := client.Send(message); err != nil {
+	if err := client.DialAndSend(message); err != nil {
 		log.Panic(err)
 		return err
 	}

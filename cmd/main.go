@@ -7,6 +7,7 @@ import (
 	"vms/api/database"
 	"vms/api/detection"
 	"vms/api/handlers"
+	"vms/api/notification"
 	"vms/api/record"
 	"vms/api/server"
 
@@ -40,6 +41,15 @@ func main() {
 	record.RecordingsDir = os.Getenv("RECORDINGS_DIR")
 	if record.RecordingsDir == "" {
 		record.RecordingsDir = "../recordings"
+	}
+
+	var smptServer = os.Getenv("SMTP_SERVER")
+	var smtpUsername = os.Getenv("SMTP_USERNAME")
+	var smtpPassword = os.Getenv("SMTP_PASSWORD")
+
+	notification.MailClient, err = notification.NewMailClient(smptServer, smtpUsername, smtpPassword)
+	if err != nil {
+		panic(err)
 	}
 
 	httpHandlers := handlers.NewHTTPHandlers()

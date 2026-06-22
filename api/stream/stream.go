@@ -2,12 +2,16 @@ package stream
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"log"
+	"os"
 	"sync"
 	"time"
 	"vms/api/capture"
 	"vms/api/detection"
+	"vms/api/notification"
+	"vms/api/record"
 
 	"github.com/hybridgroup/mjpeg"
 	"gocv.io/x/gocv"
@@ -93,6 +97,10 @@ func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh ca
 		isProcessing   bool
 	)
 
+	alertDir := fmt.Sprintf(record.RecordingsDir+"/%d", cameraId)
+	dateDir := alertDir + "/" + time.Now().Format("02-01-2006")
+	os.MkdirAll(dateDir, 0755)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -129,6 +137,16 @@ func (s *StreamManager) streamLoop(ctx context.Context, cameraId int, frameCh ca
 				detMtx.Lock()
 				if len(lastDetections) > 0 {
 					detection.DrawOverlay(&img, lastDetections, green)
+
+					if time.Now().After(notification.NotificationTimer) {
+						filename := dateDir + "/" + time.Now().Format("15-04-05") + ".jpg"
+
+						if ok := gocv.IMWrite(filename, img); ok {
+							if err := notification.SendMessage(notification.MailClient, filename); err == nil {
+								notification.NotificationTimer.Add(notification.NotificationCooldown)
+							}
+						}
+					}
 				}
 				detMtx.Unlock()
 			}
@@ -166,8 +184,6 @@ func (s *StreamManager) StopStream(cameraId int) error {
 		log.Println(err)
 	}
 	delete(s.activeStreams, cameraId)
-
-	// log.Printf("[Camera %d] Stopped streaming...", cameraId)
 
 	return nil
 }

@@ -102,7 +102,6 @@ func (r *RecordManager) StartRecording(cameraId int, rtspLink string, withDetect
 
 func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegistry, width, height int, fps float64, dir string) {
 	defer func() {
-		// r.StopRecording(registry.cameraId)
 		log.Printf("[Camera %d] Recording stopped...", registry.cameraId)
 	}()
 
@@ -149,14 +148,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 		for {
 			select {
 			case <-ctx.Done():
-				registry.mtx.Lock()
-				if registry.stdin != nil {
-					registry.stdin.Close()
-				}
-				registry.mtx.Unlock()
-				if registry.cmd != nil {
-					registry.cmd.Wait()
-				}
+				stopFFmpeg(registry)
 
 				break INNERLOOP
 			case img, ok := <-registry.frameCh:
@@ -211,14 +203,7 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 			case <-time.After(waitDuration):
 				log.Printf("[Camera %d] Midnight reached, restarting FFmpeg", registry.cameraId)
 
-				registry.mtx.Lock()
-				if registry.stdin != nil {
-					registry.stdin.Close()
-				}
-				registry.mtx.Unlock()
-				if registry.cmd != nil {
-					registry.cmd.Wait()
-				}
+				stopFFmpeg(registry)
 
 				break INNERLOOP
 
@@ -234,14 +219,8 @@ func (r *RecordManager) recordingLoop(ctx context.Context, registry *RecordRegis
 
 			if time.Now().After(dayEnd) {
 				log.Printf("[Camera %d] Day ended (fallback), restarting", registry.cameraId)
-				registry.mtx.Lock()
-				if registry.stdin != nil {
-					registry.stdin.Close()
-				}
-				registry.mtx.Unlock()
-				if registry.cmd != nil {
-					registry.cmd.Wait()
-				}
+
+				stopFFmpeg(registry)
 
 				break INNERLOOP
 			}
@@ -270,8 +249,6 @@ func (r *RecordManager) StopRecording(cameraId int) error {
 		log.Println(err)
 	}
 	delete(r.activeCameras, cameraId)
-
-	// log.Println("Camera", cameraId, "stopped recording")
 
 	return nil
 }
@@ -359,4 +336,15 @@ func getVideoInfo(rtspLink string) (int, int, float64, error) {
 	}
 
 	return width, height, fps, nil
+}
+
+func stopFFmpeg(registry *RecordRegistry) {
+	registry.mtx.Lock()
+	if registry.stdin != nil {
+		registry.stdin.Close()
+	}
+	registry.mtx.Unlock()
+	if registry.cmd != nil {
+		registry.cmd.Wait()
+	}
 }

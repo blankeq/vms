@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -47,7 +48,9 @@ func main() {
 	var smtpUsername = os.Getenv("SMTP_USERNAME")
 	var smtpPassword = os.Getenv("SMTP_PASSWORD")
 
-	notification.MailClient, err = notification.NewMailClient(smptServer, smtpUsername, smtpPassword)
+	ctx := context.Background()
+
+	notification.MailClient, err = notification.NewMailClient(ctx, smptServer, smtpUsername, smtpPassword)
 	if err != nil {
 		panic(err)
 	}

@@ -1,6 +1,8 @@
 package notification
 
 import (
+	"context"
+	"log"
 	"time"
 
 	"github.com/wneessen/go-mail"
@@ -11,10 +13,14 @@ const NotificationCooldown = 5 * time.Minute
 var NotificationTimer = time.Now()
 var MailClient *mail.Client
 
-func NewMailClient(smptServer, smtpUsername, smtpPassword string) (*mail.Client, error) {
+func NewMailClient(ctx context.Context, smptServer, smtpUsername, smtpPassword string) (*mail.Client, error) {
 	client, err := mail.NewClient(smptServer, mail.WithTLSPortPolicy(mail.TLSMandatory),
 		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover), mail.WithUsername(smtpUsername), mail.WithPassword(smtpPassword))
 	if err != nil {
+		return &mail.Client{}, err
+	}
+
+	if err := client.DialWithContext(ctx); err != nil {
 		return &mail.Client{}, err
 	}
 
@@ -24,13 +30,19 @@ func NewMailClient(smptServer, smtpUsername, smtpPassword string) (*mail.Client,
 func SendMessage(client *mail.Client, imagePath string) error {
 	message := mail.NewMsg()
 
-	message.From("testvms123@outlook.com")
-	message.To("fio-11111@yandex.ru")
-	message.Subject("Обнаружение на камере")
+	if err := message.From("testvms123@outlook.com"); err != nil {
+		log.Panic(err)
+	}
+
+	if err := message.To("fio-11111@yandex.ru"); err != nil {
+		log.Panic(err)
+	}
+
 	message.SetBodyString(mail.TypeTextPlain, "Был обнаружен человек на камере")
 	message.AttachFile(imagePath)
 
-	if err := client.DialAndSend(message); err != nil {
+	if err := client.Send(message); err != nil {
+		log.Panic(err)
 		return err
 	}
 
